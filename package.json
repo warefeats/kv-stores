@@ -1,0 +1,22 @@
+{
+  "name": "kv-stores",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "scripts": {
+    "bench": "bun run src/run.ts",
+    "smoke": "bun run src/run.ts --smoke",
+    "import": "bun run src/import.ts",
+    "import-run": "bun run src/import-run.ts",
+    "check": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.21",
+    "typescript": "5.9.2"
+  },
+  "workspaces": [
+    "infra"
+  ]
+}
