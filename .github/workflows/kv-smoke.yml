@@ -1,0 +1,78 @@
+name: KV smoke test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "compose/**"
+      - "Dockerfile.memtier"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run smoke
+        run: bun run src/run.ts --smoke --output=/tmp/smoke-results.json
+
+      - name: Assert invariants
+        run: |
+          set -euo pipefail
+          RESULTS=/tmp/smoke-results.json
+
+          RESULT_COUNT=$(jq '.resultCount' "$RESULTS")
+          FAILURE_COUNT=$(jq '.failureCount' "$RESULTS")
+          echo "results: $RESULT_COUNT, failures: $FAILURE_COUNT"
+
+          if [ "$RESULT_COUNT" -lt 15 ]; then
+            echo "FAIL: expected >= 15 results, got $RESULT_COUNT"
+            exit 1
+          fi
+
+          if [ "$FAILURE_COUNT" -ne 0 ]; then
+            echo "FAIL: $FAILURE_COUNT failures"
+            jq '.failures' "$RESULTS"
+            exit 1
+          fi
+
+          # All throughput results must have ops/sec > 0
+          ZERO_OPS=$(jq '[.results[] | select(.workload != "memory-load") | select(.opsPerSec <= 0)] | length' "$RESULTS")
+          if [ "$ZERO_OPS" -gt 0 ]; then
+            echo "FAIL: $ZERO_OPS results with zero ops/sec"
+            exit 1
+          fi
+
+          # All results must have p99 > 0
+          ZERO_P99=$(jq '[.results[] | select(.workload != "memory-load") | select(.p99Ms <= 0)] | length' "$RESULTS")
+          if [ "$ZERO_P99" -gt 0 ]; then
+            echo "FAIL: $ZERO_P99 results with zero p99"
+            exit 1
+          fi
+
+          # Memory workload must report key counts
+          NO_KEYS=$(jq '[.results[] | select(.workload == "memory-load") | select(.engineStats.keyCount <= 0)] | length' "$RESULTS")
+          if [ "$NO_KEYS" -gt 0 ]; then
+            echo "FAIL: $NO_KEYS memory-load results with zero key count"
+            exit 1
+          fi
+
+          echo "all invariants passed"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-results
+          path: /tmp/smoke-results.json
