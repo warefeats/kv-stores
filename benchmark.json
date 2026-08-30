@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "kv-stores-2026-08",
+  "slug": "redis-vs-valkey-vs-dragonfly-kv",
+  "category": "Caches",
+  "title": "Redis vs Valkey vs Dragonfly",
+  "deck": "Three in-memory key-value stores tested across SET/GET throughput, pipelining, and memory efficiency with memtier_benchmark.",
+  "unit": "ms",
+  "lowerIsBetter": true,
+  "verdict": {
+    "winnerId": "TODO",
+    "headline": "TODO — awaiting first published cloud run",
+    "summary": "TODO — verdict will be written from real cloud run data, not local smoke results."
+  },
+  "trademarks": [
+    "Redis is a registered trademark of Redis Ltd.",
+    "Dragonfly is a trademark of DragonflyDB Ltd."
+  ],
+  "limitations": [
+    "KeyDB omitted: the project is effectively unmaintained (last release 2023, open issues unresolved).",
+    "Each engine runs at its default threading configuration — single-threaded I/O for Redis and Valkey, multi-threaded for Dragonfly. This is intentional: the comparison measures what you get out of the box, not a hand-tuned configuration.",
+    "Local runs use a single-host topology where client and server share the same machine's resources. Network latency and CPU contention differ from a dedicated two-host setup. Cloud runs on separate instances eliminate this.",
+    "No clustering or replication — all tests target a single standalone instance.",
+    "No TLS overhead measured in this benchmark.",
+    "Eviction policy: Redis/Valkey use allkeys-lru (sampled LRU); Dragonfly uses --cache_mode (DASH-based eviction) since it does not expose maxmemory-policy as a CLI flag. The algorithms differ internally, which may affect eviction fairness under memory pressure."
+  ],
+  "runs": []
+}
