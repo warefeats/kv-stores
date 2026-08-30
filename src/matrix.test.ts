@@ -5,19 +5,20 @@ import {
   projectName,
   containerName,
   workloadConfig,
+  preloadSizeBytes,
   ENGINES,
   WORKLOADS,
 } from "./matrix.js";
 
 describe("buildMatrix", () => {
-  test("full matrix has 15 sessions (3 engines × 5 workloads)", () => {
+  test("full matrix has 12 sessions (3 engines x 4 workloads)", () => {
     const sessions = buildMatrix(false);
-    expect(sessions).toHaveLength(15);
+    expect(sessions).toHaveLength(12);
   });
 
-  test("smoke matrix has 15 sessions (same count, different params)", () => {
+  test("smoke matrix has 12 sessions (same count, different params)", () => {
     const sessions = buildMatrix(true);
-    expect(sessions).toHaveLength(15);
+    expect(sessions).toHaveLength(12);
   });
 
   test("every engine appears", () => {
@@ -38,6 +39,10 @@ describe("buildMatrix", () => {
     const sessions = buildMatrix(false);
     const labels = sessions.map((s) => s.label);
     expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  test("pipeline-1 is not a workload (reuses set-get-small)", () => {
+    expect(WORKLOADS).not.toContain("pipeline-1");
   });
 });
 
@@ -89,9 +94,10 @@ describe("workloadConfig", () => {
     expect(config.pipeline).toBe(1);
   });
 
-  test("set-get-large uses 10KB data", () => {
+  test("set-get-large uses 10KB data with 40K keyMax", () => {
     const config = workloadConfig("set-get-large", false);
     expect(config.dataSize).toBe(10_240);
+    expect(config.keyMax).toBe(40_000);
   });
 
   test("pipeline-30 uses pipeline depth 30", () => {
@@ -100,18 +106,41 @@ describe("workloadConfig", () => {
     expect(config.dataSize).toBe(100);
   });
 
-  test("memory-load uses sequential key pattern and request count", () => {
+  test("memory-load uses 1M keys in full mode", () => {
     const config = workloadConfig("memory-load", false);
     expect(config.keyPattern).toBe("P:P");
     expect(config.ratio).toBe("1:0");
-    expect(config.requests).toBe(100_000);
+    expect(config.keyMax).toBe(1_000_000);
+    expect(config.requests).toBe(1_000_000);
+    expect(config.threads).toBe(1);
+    expect(config.clients).toBe(1);
     expect(config.warmupPasses).toBe(0);
     expect(config.measuredPasses).toBe(1);
   });
 
-  test("smoke memory-load uses fewer keys", () => {
+  test("smoke memory-load uses 100K keys", () => {
     const config = workloadConfig("memory-load", true);
-    expect(config.requests).toBe(10_000);
-    expect(config.keyMax).toBe(10_000);
+    expect(config.requests).toBe(100_000);
+    expect(config.keyMax).toBe(100_000);
+  });
+});
+
+describe("preload sizing", () => {
+  test("set-get-large full stays under 50% of 1 GiB", () => {
+    const bytes = preloadSizeBytes("set-get-large", false);
+    const halfGib = (1024 * 1024 * 1024) / 2;
+    expect(bytes).toBeLessThan(halfGib);
+  });
+
+  test("set-get-small full stays under 50% of 1 GiB", () => {
+    const bytes = preloadSizeBytes("set-get-small", false);
+    const halfGib = (1024 * 1024 * 1024) / 2;
+    expect(bytes).toBeLessThan(halfGib);
+  });
+
+  test("memory-load full fits in 1 GiB", () => {
+    const bytes = preloadSizeBytes("memory-load", false);
+    const oneGib = 1024 * 1024 * 1024;
+    expect(bytes).toBeLessThan(oneGib);
   });
 });

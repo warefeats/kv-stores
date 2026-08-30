@@ -2,7 +2,6 @@ export type Engine = "redis" | "valkey" | "dragonfly";
 export type Workload =
   | "set-get-small"
   | "set-get-large"
-  | "pipeline-1"
   | "pipeline-30"
   | "memory-load";
 
@@ -30,7 +29,6 @@ export const ENGINES: Engine[] = ["redis", "valkey", "dragonfly"];
 export const WORKLOADS: Workload[] = [
   "set-get-small",
   "set-get-large",
-  "pipeline-1",
   "pipeline-30",
   "memory-load",
 ];
@@ -71,20 +69,7 @@ export function workloadConfig(
         testTime: smoke ? 5 : 10,
         requests: 0,
         keyPattern: "R:R",
-        keyMax: 100_000,
-      };
-    case "pipeline-1":
-      return {
-        ...base,
-        ratio: "1:10",
-        dataSize: 100,
-        pipeline: 1,
-        threads: smoke ? 2 : 4,
-        clients: smoke ? 10 : 50,
-        testTime: smoke ? 5 : 10,
-        requests: 0,
-        keyPattern: "R:R",
-        keyMax: 100_000,
+        keyMax: 40_000,
       };
     case "pipeline-30":
       return {
@@ -105,16 +90,22 @@ export function workloadConfig(
         ratio: "1:0",
         dataSize: 100,
         pipeline: 1,
-        threads: 2,
-        clients: 5,
+        threads: 1,
+        clients: 1,
         testTime: 0,
-        requests: smoke ? 10_000 : 100_000,
+        requests: smoke ? 100_000 : 1_000_000,
         keyPattern: "P:P",
-        keyMax: smoke ? 10_000 : 100_000,
+        keyMax: smoke ? 100_000 : 1_000_000,
         warmupPasses: 0,
         measuredPasses: 1,
       };
   }
+}
+
+export function preloadSizeBytes(workload: Workload, smoke: boolean = smokeMode): number {
+  const config = workloadConfig(workload, smoke);
+  const overhead = 72;
+  return config.keyMax * (config.dataSize + overhead);
 }
 
 export function buildMatrix(smoke: boolean = smokeMode): Session[] {
