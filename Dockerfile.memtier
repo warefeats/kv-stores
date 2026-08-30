@@ -1,0 +1,26 @@
+FROM ubuntu:24.04 AS builder
+
+ARG MEMTIER_VERSION=2.5.1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential autoconf automake libtool \
+    libssl-dev libevent-dev zlib1g-dev pkg-config git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch ${MEMTIER_VERSION} \
+    https://github.com/RedisLabs/memtier_benchmark.git /src
+
+WORKDIR /src
+RUN autoreconf -ivf && ./configure && make -j"$(nproc)" && make install
+
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3t64 libevent-2.1-7t64 libevent-extra-2.1-7t64 \
+    libevent-openssl-2.1-7t64 libevent-pthreads-2.1-7t64 \
+    zlib1g redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/bin/memtier_benchmark /usr/local/bin/
+
+CMD ["sleep", "infinity"]

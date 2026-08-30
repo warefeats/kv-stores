@@ -1,0 +1,18 @@
+services:
+  engine:
+    extra_hosts:
+      - "engine:127.0.0.1"
+    deploy:
+      resources:
+        limits:
+          cpus: null
+          memory: null
+
+  client:
+    extra_hosts:
+      - "engine:${ENGINE_HOST}"
+    deploy:
+      resources:
+        limits:
+          cpus: null
+          memory: null

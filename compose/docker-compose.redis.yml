@@ -1,0 +1,36 @@
+services:
+  engine:
+    image: redis:8.8.2
+    command: >
+      redis-server
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+      --protected-mode no
+      --bind 0.0.0.0
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 2G
+
+  client:
+    build:
+      context: ..
+      dockerfile: Dockerfile.memtier
+    depends_on:
+      engine:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 1G
