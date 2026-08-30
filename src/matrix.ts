@@ -1,0 +1,144 @@
+export type Engine = "redis" | "valkey" | "dragonfly";
+export type Workload =
+  | "set-get-small"
+  | "set-get-large"
+  | "pipeline-1"
+  | "pipeline-30"
+  | "memory-load";
+
+export interface Session {
+  engine: Engine;
+  workload: Workload;
+  label: string;
+}
+
+export interface WorkloadConfig {
+  ratio: string;
+  dataSize: number;
+  pipeline: number;
+  threads: number;
+  clients: number;
+  testTime: number;
+  requests: number;
+  keyPattern: string;
+  keyMax: number;
+  warmupPasses: number;
+  measuredPasses: number;
+}
+
+export const ENGINES: Engine[] = ["redis", "valkey", "dragonfly"];
+export const WORKLOADS: Workload[] = [
+  "set-get-small",
+  "set-get-large",
+  "pipeline-1",
+  "pipeline-30",
+  "memory-load",
+];
+
+const smokeMode = process.argv.includes("--smoke");
+
+export function workloadConfig(
+  workload: Workload,
+  smoke: boolean = smokeMode,
+): WorkloadConfig {
+  const base = {
+    warmupPasses: smoke ? 1 : 2,
+    measuredPasses: smoke ? 2 : 10,
+  };
+
+  switch (workload) {
+    case "set-get-small":
+      return {
+        ...base,
+        ratio: "1:10",
+        dataSize: 100,
+        pipeline: 1,
+        threads: smoke ? 2 : 4,
+        clients: smoke ? 10 : 50,
+        testTime: smoke ? 5 : 10,
+        requests: 0,
+        keyPattern: "R:R",
+        keyMax: 100_000,
+      };
+    case "set-get-large":
+      return {
+        ...base,
+        ratio: "1:10",
+        dataSize: 10_240,
+        pipeline: 1,
+        threads: smoke ? 2 : 4,
+        clients: smoke ? 10 : 50,
+        testTime: smoke ? 5 : 10,
+        requests: 0,
+        keyPattern: "R:R",
+        keyMax: 100_000,
+      };
+    case "pipeline-1":
+      return {
+        ...base,
+        ratio: "1:10",
+        dataSize: 100,
+        pipeline: 1,
+        threads: smoke ? 2 : 4,
+        clients: smoke ? 10 : 50,
+        testTime: smoke ? 5 : 10,
+        requests: 0,
+        keyPattern: "R:R",
+        keyMax: 100_000,
+      };
+    case "pipeline-30":
+      return {
+        ...base,
+        ratio: "1:10",
+        dataSize: 100,
+        pipeline: 30,
+        threads: smoke ? 2 : 4,
+        clients: smoke ? 10 : 50,
+        testTime: smoke ? 5 : 10,
+        requests: 0,
+        keyPattern: "R:R",
+        keyMax: 100_000,
+      };
+    case "memory-load":
+      return {
+        ...base,
+        ratio: "1:0",
+        dataSize: 100,
+        pipeline: 1,
+        threads: 2,
+        clients: 5,
+        testTime: 0,
+        requests: smoke ? 10_000 : 100_000,
+        keyPattern: "P:P",
+        keyMax: smoke ? 10_000 : 100_000,
+        warmupPasses: 0,
+        measuredPasses: 1,
+      };
+  }
+}
+
+export function buildMatrix(smoke: boolean = smokeMode): Session[] {
+  const sessions: Session[] = [];
+  for (const engine of ENGINES) {
+    for (const workload of WORKLOADS) {
+      sessions.push({
+        engine,
+        workload,
+        label: `${engine}/${workload}`,
+      });
+    }
+  }
+  return sessions;
+}
+
+export function composeFiles(session: Session): string[] {
+  return [`compose/docker-compose.${session.engine}.yml`];
+}
+
+export function projectName(session: Session): string {
+  return `kv-${session.engine}`;
+}
+
+export function containerName(session: Session, service: string): string {
+  return `${projectName(session)}-${service}-1`;
+}
