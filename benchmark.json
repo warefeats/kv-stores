@@ -14,6 +14,7 @@
   },
   "trademarks": [
     "Redis is a registered trademark of Redis Ltd.",
+    "Valkey is a trademark of The Linux Foundation.",
     "Dragonfly is a trademark of DragonflyDB Ltd."
   ],
   "limitations": [

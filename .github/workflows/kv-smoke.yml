@@ -68,6 +68,14 @@ jobs:
             exit 1
           fi
 
+          # GET-bearing workloads must have hit ratio >= 99%
+          LOW_HIT=$(jq '[.results[] | select(.workload != "memory-load") | select(.engineStats.hitRatio < 0.99)] | length' "$RESULTS")
+          if [ "$LOW_HIT" -gt 0 ]; then
+            echo "FAIL: $LOW_HIT results with hit ratio < 99%"
+            jq '[.results[] | select(.workload != "memory-load") | {label, hitRatio: .engineStats.hitRatio}]' "$RESULTS"
+            exit 1
+          fi
+
           echo "all invariants passed"
 
       - name: Upload results

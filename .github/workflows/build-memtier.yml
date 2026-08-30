@@ -1,0 +1,40 @@
+name: Build memtier image
+
+on:
+  workflow_dispatch:
+    inputs:
+      memtier_version:
+        description: "memtier_benchmark version tag"
+        required: true
+        default: "2.5.1"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and push to GHCR
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.memtier
+          push: true
+          build-args: |
+            MEMTIER_VERSION=${{ inputs.memtier_version }}
+          tags: |
+            ghcr.io/warefeats/memtier-benchmark:${{ inputs.memtier_version }}
+            ghcr.io/warefeats/memtier-benchmark:latest
