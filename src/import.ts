@@ -25,7 +25,7 @@ const meta: RunMetadata = {
     runs: results.smoke ? 2 : 10,
     processModel: "container-per-engine",
     cacheState: "n/a",
-    output: "memtier_benchmark JSON",
+    output: "memtier_benchmark JSON (RESP2, no TLS)",
   },
 };
 

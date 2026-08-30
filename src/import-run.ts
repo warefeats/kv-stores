@@ -35,8 +35,16 @@ export interface RawResult {
     usedMemoryMb: number;
     usedMemoryRssMb: number;
     keyCount: number;
+    hitRatio?: number;
   };
   metrics: Record<string, { value: number; unit: string; label?: string }>;
+  config?: {
+    engineImage: string;
+    maxmemoryBytes: number;
+    threads: number;
+    memtierVersion: string;
+    cloudMode: boolean;
+  };
 }
 
 export interface RawResults {
@@ -139,7 +147,7 @@ const SECTION_DEFS = [
   {
     id: "small-value-throughput",
     title: "Small value throughput",
-    deck: "SET/GET mix (1:10 ratio) with 100-byte values, pipeline depth 1.",
+    deck: "SET/GET mix (1:10 ratio) with 100-byte values, pipeline depth 1. RESP2, no TLS.",
     workload: "set-get-small",
     unit: "ms",
     lowerIsBetter: true,
@@ -148,7 +156,7 @@ const SECTION_DEFS = [
   {
     id: "large-value-throughput",
     title: "Large value throughput",
-    deck: "SET/GET mix (1:10 ratio) with 10 KB values, pipeline depth 1.",
+    deck: "SET/GET mix (1:10 ratio) with 10 KB values, pipeline depth 1. RESP2, no TLS.",
     workload: "set-get-large",
     unit: "ms",
     lowerIsBetter: true,
@@ -157,8 +165,12 @@ const SECTION_DEFS = [
   {
     id: "pipeline-effect",
     title: "Pipeline effect",
-    deck: "SET/GET mix (1:10 ratio) with 100-byte values, comparing pipeline depth 1 vs 30.",
-    workloads: ["pipeline-1", "pipeline-30"],
+    deck: "SET/GET mix (1:10 ratio) with 100-byte values, comparing pipeline depth 1 vs 30. Candidate statistic: pipeline-30 throughput.",
+    candidateWorkload: "pipeline-30",
+    testWorkloads: [
+      { workload: "set-get-small", label: "Pipeline depth 1", desc: "SET/GET mix at pipeline depth 1 (reuses small-value throughput data)" },
+      { workload: "pipeline-30", label: "Pipeline depth 30", desc: "SET/GET mix at pipeline depth 30" },
+    ],
     unit: "ops/s",
     lowerIsBetter: false,
     metricForChart: "opsPerSec",
@@ -166,11 +178,11 @@ const SECTION_DEFS = [
   {
     id: "memory-efficiency",
     title: "Memory efficiency",
-    deck: "Memory consumed after loading keys with 100-byte values. Lower is better.",
+    deck: "Baseline-corrected memory after loading keys with 100-byte values. RSS delta is the primary metric (allocator-neutral).",
     workload: "memory-load",
     unit: "MB",
     lowerIsBetter: true,
-    metricForChart: "usedMemoryMb",
+    metricForChart: "rssDeltaMb",
   },
 ] as const;
 
@@ -232,9 +244,9 @@ function buildCandidate(
   let samples: number[];
   let metrics: Record<string, { value: number; unit: string; label?: string }> | undefined;
 
-  if (metricKey === "usedMemoryMb") {
+  if (metricKey === "rssDeltaMb") {
     const result = results[0]!;
-    samples = [result.metrics["usedMemoryMb"]?.value ?? result.engineStats.usedMemoryMb];
+    samples = [result.metrics["rssDeltaMb"]?.value ?? result.engineStats.usedMemoryRssMb];
     metrics = result.metrics;
   } else if (metricKey === "opsPerSec") {
     samples = results.flatMap((r) => r.samplesOpsPerSec);
@@ -276,36 +288,30 @@ function buildSections(results: RawResult[]): BenchmarkSection[] {
   const sections: BenchmarkSection[] = [];
 
   for (const def of SECTION_DEFS) {
-    const workloads = "workloads" in def ? def.workloads : [def.workload];
-    const sectionResults = results.filter((r) =>
-      (workloads as readonly string[]).includes(r.workload),
-    );
-    if (sectionResults.length === 0) continue;
+    if ("testWorkloads" in def) {
+      const candidateResults = results.filter((r) => r.workload === def.candidateWorkload);
+      if (candidateResults.length === 0) continue;
+      const engines = [...new Set(candidateResults.map((r) => r.engine))];
+      if (engines.length < 2) continue;
 
-    const engines = [...new Set(sectionResults.map((r) => r.engine))];
-    if (engines.length < 2) continue;
+      const candidates = engines.map((e) => {
+        const engineResults = candidateResults.filter((r) => r.engine === e);
+        return buildCandidate(e, engineResults, def.metricForChart);
+      });
 
-    const candidates = engines.map((e) => {
-      const engineResults = sectionResults.filter((r) => r.engine === e);
-      return buildCandidate(e, engineResults, def.metricForChart);
-    });
+      const sorted = [...candidates].sort((a, b) =>
+        def.lowerIsBetter
+          ? a.statistics.medianMs - b.statistics.medianMs
+          : b.statistics.medianMs - a.statistics.medianMs,
+      );
+      const winner = sorted[0]!;
 
-    const sorted = [...candidates].sort((a, b) =>
-      def.lowerIsBetter
-        ? a.statistics.medianMs - b.statistics.medianMs
-        : b.statistics.medianMs - a.statistics.medianMs,
-    );
-    const winner = sorted[0]!;
-
-    let tests: BenchmarkTest[] | undefined;
-    if ("workloads" in def) {
-      tests = (def.workloads as readonly string[]).map((wl) => {
-        const wlResults = sectionResults.filter((r) => r.workload === wl);
-        const pipelineDepth = wl === "pipeline-1" ? "1" : "30";
+      const tests: BenchmarkTest[] = def.testWorkloads.map((tw) => {
+        const wlResults = results.filter((r) => r.workload === tw.workload);
         return {
-          id: wl,
-          title: `Pipeline depth ${pipelineDepth}`,
-          description: `SET/GET mix at pipeline depth ${pipelineDepth}`,
+          id: tw.workload === "set-get-small" ? "pipeline-1" : tw.workload,
+          title: tw.label,
+          description: tw.desc,
           unit: def.unit,
           lowerIsBetter: def.lowerIsBetter,
           results: engines.map((e) => {
@@ -318,22 +324,48 @@ function buildSections(results: RawResult[]): BenchmarkSection[] {
           }),
         };
       });
-    }
 
-    sections.push({
-      id: def.id,
-      title: def.title,
-      deck: def.deck,
-      unit: def.unit,
-      lowerIsBetter: def.lowerIsBetter,
-      verdict: {
-        winnerId: winner.id,
-        headline: "TODO",
-        summary: "TODO",
-      },
-      candidates,
-      tests,
-    });
+      sections.push({
+        id: def.id,
+        title: def.title,
+        deck: def.deck,
+        unit: def.unit,
+        lowerIsBetter: def.lowerIsBetter,
+        verdict: { winnerId: winner.id, headline: "TODO", summary: "TODO" },
+        candidates,
+        tests,
+      });
+    } else {
+      const workloads: string[] = [def.workload];
+      const sectionResults = results.filter((r) =>
+        workloads.includes(r.workload),
+      );
+      if (sectionResults.length === 0) continue;
+      const engines = [...new Set(sectionResults.map((r) => r.engine))];
+      if (engines.length < 2) continue;
+
+      const candidates = engines.map((e) => {
+        const engineResults = sectionResults.filter((r) => r.engine === e);
+        return buildCandidate(e, engineResults, def.metricForChart);
+      });
+
+      const sorted = [...candidates].sort((a, b) =>
+        def.lowerIsBetter
+          ? a.statistics.medianMs - b.statistics.medianMs
+          : b.statistics.medianMs - a.statistics.medianMs,
+      );
+      const winner = sorted[0]!;
+
+      sections.push({
+        id: def.id,
+        title: def.title,
+        deck: def.deck,
+        unit: def.unit,
+        lowerIsBetter: def.lowerIsBetter,
+        verdict: { winnerId: winner.id, headline: "TODO", summary: "TODO" },
+        candidates,
+      });
+    }
   }
 
   return sections;
@@ -348,6 +380,9 @@ export async function importRun(
   const runFile = `runs/${slug}.json`;
 
   const sections = buildSections(raw.results);
+  if (sections.length === 0) {
+    throw new Error("Import produced 0 sections — need results for at least 2 engines per workload");
+  }
 
   const run: BenchmarkRun = {
     schemaVersion: 1,
