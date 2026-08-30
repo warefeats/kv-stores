@@ -38,7 +38,7 @@ rig-deploy:
     cd infra && bun x cdk deploy --require-approval never --outputs-file ../infra-outputs.json
 
 rig-cloud *ARGS:
-    gh workflow run kv-bench-cloud.yml {{ARGS}}
+    gh workflow run kv-bench-cloud.yml -f matrix=smoke --repo warefeats/kv-stores {{ARGS}}
 
 rig-watch:
     gh run list --workflow=kv-bench-cloud.yml --limit=1 --json databaseId --jq '.[0].databaseId' | xargs gh run watch
@@ -46,7 +46,10 @@ rig-watch:
 rig-results:
     #!/usr/bin/env bash
     set -euo pipefail
-    BUCKET=$(cd infra && bun x cdk context 2>/dev/null | grep -o 'warefeats-kv-bench-results-[a-z0-9]*' || echo "check infra-outputs.json")
+    BUCKET=$(aws cloudformation describe-stacks \
+        --stack-name WarefeatsKvBench \
+        --query 'Stacks[0].Outputs[?OutputKey==`ResultsBucketName`].OutputValue' \
+        --output text)
     aws s3 ls "s3://${BUCKET}/" --recursive --human-readable
 
 rig-destroy:
@@ -65,11 +68,12 @@ setup-oidc:
         --template-file infra/github-oidc-role.yml \
         --stack-name kv-stores-github-oidc \
         --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+        --no-fail-on-empty-changeset \
         --parameter-overrides \
-            GitHubOrganization=warefeats \
+            GitHubOrg=warefeats \
             GitHubRepository=kv-stores \
             RepositoryId="${REPO_ID}" \
-            OrgId="${GITHUB_ORG_ID}" \
+            GitHubOrgId="${GITHUB_ORG_ID}" \
         --region {{aws_region}}
 
     ROLE_ARN=$(aws cloudformation describe-stacks \

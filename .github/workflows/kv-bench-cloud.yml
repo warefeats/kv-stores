@@ -10,7 +10,19 @@ on:
       matrix:
         description: "Matrix size (smoke, full)"
         required: false
-        default: "full"
+        default: "smoke"
+        type: choice
+        options:
+          - smoke
+          - full
+      engine_threads:
+        description: "Dragonfly proactor threads (matches engine vCPU count)"
+        required: false
+        default: "64"
+      client_type:
+        description: "Client EC2 instance type"
+        required: false
+        default: "c7g.4xlarge"
       region:
         description: "AWS region"
         required: false
@@ -23,6 +35,7 @@ concurrency:
 permissions:
   id-token: write
   contents: read
+  packages: read
 
 env:
   STACK_NAME: WarefeatsKvBench
@@ -31,6 +44,7 @@ env:
 jobs:
   benchmark:
     runs-on: ubuntu-24.04
+    environment: kv-bench
     timeout-minutes: 180
 
     steps:
@@ -50,32 +64,38 @@ jobs:
           aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' \
             | jq -r '.[] | "\(.OutputKey)=\(.OutputValue)"' >> "$GITHUB_OUTPUT"
 
-      - name: Find AZ with capacity
+      - name: Find AZ with engine capacity
         id: az
         run: |
           set -euo pipefail
-          AZ=$(aws ec2 describe-availability-zones --region "${{ inputs.region }}" \
-            --query 'AvailabilityZones[?State==`available`].ZoneName' --output text | tr '\t' '\n' | head -1)
+          AZ=$(aws ec2 describe-instance-type-offerings \
+            --location-type availability-zone \
+            --filters "Name=instance-type,Values=c7g.metal" \
+            --query "InstanceTypeOfferings[0].Location" --output text)
+          SUBNET=$(aws ec2 describe-subnets \
+            --filters "Name=availability-zone,Values=${AZ}" "Name=default-for-az,Values=true" \
+            --query 'Subnets[0].SubnetId' --output text)
           echo "az=$AZ" >> "$GITHUB_OUTPUT"
+          echo "subnet=$SUBNET" >> "$GITHUB_OUTPUT"
 
       - name: Launch instances
         id: launch
         run: |
           set -euo pipefail
-          SUBNET=$(aws ec2 describe-subnets \
-            --filters "Name=availability-zone,Values=${{ steps.az.outputs.az }}" "Name=default-for-az,Values=true" \
-            --query 'Subnets[0].SubnetId' --output text)
+          RUN_ID="kv-bench-$(date +%Y%m%d-%H%M%S)-${GITHUB_RUN_NUMBER}"
+          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
 
           ENGINE_ID=$(aws ec2 run-instances \
             --launch-template LaunchTemplateId=${{ steps.outputs.outputs.EngineLtId }} \
-            --subnet-id "$SUBNET" \
-            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=kv-bench-engine},{Key=Project,Value=$PROJECT_TAG}]" \
+            --subnet-id "${{ steps.az.outputs.subnet }}" \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_ID}-engine},{Key=Project,Value=$PROJECT_TAG}]" \
             --query 'Instances[0].InstanceId' --output text)
 
           CLIENT_ID=$(aws ec2 run-instances \
             --launch-template LaunchTemplateId=${{ steps.outputs.outputs.ClientLtId }} \
-            --subnet-id "$SUBNET" \
-            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=kv-bench-client},{Key=Project,Value=$PROJECT_TAG}]" \
+            --instance-type "${{ inputs.client_type }}" \
+            --subnet-id "${{ steps.az.outputs.subnet }}" \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_ID}-client},{Key=Project,Value=$PROJECT_TAG}]" \
             --query 'Instances[0].InstanceId' --output text)
 
           echo "engine_id=$ENGINE_ID" >> "$GITHUB_OUTPUT"
@@ -85,18 +105,27 @@ jobs:
       - name: Wait for SSM readiness
         run: |
           set -euo pipefail
-          for ID in ${{ steps.launch.outputs.engine_id }} ${{ steps.launch.outputs.client_id }}; do
-            echo "waiting for $ID..."
-            for i in $(seq 1 60); do
+          wait_ssm() {
+            local ID=$1
+            for _ in $(seq 1 60); do
               STATUS=$(aws ssm describe-instance-information \
-                --filters "Key=InstanceIds,Values=$ID" \
+                --filters "Key=InstanceIds,Values=${ID}" \
                 --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || echo "None")
-              [ "$STATUS" = "Online" ] && break
+              if [ "$STATUS" = "Online" ]; then return 0; fi
               sleep 10
             done
-            [ "$STATUS" != "Online" ] && { echo "FAIL: $ID not SSM-ready"; exit 1; }
-            echo "$ID is SSM-ready"
-          done
+            echo "SSM timeout for ${ID}" >&2; return 1
+          }
+          wait_ssm ${{ steps.launch.outputs.engine_id }}
+          wait_ssm ${{ steps.launch.outputs.client_id }}
+
+      - name: Collect instance metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          AMI=$(aws ec2 describe-instances --instance-ids ${{ steps.launch.outputs.engine_id }} \
+            --query 'Reservations[0].Instances[0].ImageId' --output text)
+          echo "ami=$AMI" >> "$GITHUB_OUTPUT"
 
       - name: Get engine IP
         id: engine_ip
@@ -107,89 +136,179 @@ jobs:
           echo "ip=$IP" >> "$GITHUB_OUTPUT"
 
       - name: Run benchmark
+        env:
+          ENGINE_ID: ${{ steps.launch.outputs.engine_id }}
+          CLIENT_ID: ${{ steps.launch.outputs.client_id }}
+          ENGINE_IP: ${{ steps.engine_ip.outputs.ip }}
+          ENGINE_THREADS: ${{ inputs.engine_threads }}
+          BUCKET: ${{ steps.outputs.outputs.ResultsBucketName }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+
+          ssm_run() {
+            local INSTANCE=$1; shift
+            local CMD_ID
+            CMD_ID=$(aws ssm send-command \
+              --instance-ids "$INSTANCE" \
+              --document-name AWS-RunShellScript \
+              --timeout-seconds 3600 \
+              --parameters "{\"commands\":[\"set -euo pipefail\n$*\"]}" \
+              --query 'Command.CommandId' --output text)
+            echo "  SSM command ${CMD_ID} on ${INSTANCE}"
+            for _ in $(seq 1 360); do
+              STATUS=$(aws ssm get-command-invocation \
+                --command-id "$CMD_ID" --instance-id "$INSTANCE" \
+                --query 'Status' --output text 2>/dev/null || echo "Pending")
+              case "$STATUS" in
+                Success) return 0 ;;
+                Failed|TimedOut|Cancelled)
+                  echo "SSM command $STATUS on $INSTANCE" >&2
+                  aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE" \
+                    --query 'StandardErrorContent' --output text >&2
+                  return 1 ;;
+              esac
+              sleep 10
+            done
+            echo "SSM polling exhausted for $INSTANCE" >&2
+            return 1
+          }
+
           ENGINES="${{ inputs.engine_type }}"
           [ "$ENGINES" = "all" ] && ENGINES="redis valkey dragonfly"
           SMOKE_FLAG=""
           [ "${{ inputs.matrix }}" = "smoke" ] && SMOKE_FLAG="--smoke"
 
+          # Log in to GHCR on client for memtier image
+          ssm_run "$CLIENT_ID" \
+            "echo ${GHCR_TOKEN} | docker login ghcr.io -u x --password-stdin && docker pull ghcr.io/warefeats/memtier-benchmark:2.5.1"
+
           for ENGINE in $ENGINES; do
             echo "=== benchmarking $ENGINE ==="
 
+            COMPOSE_FILES="-f compose/docker-compose.${ENGINE}.yml -f compose/cloud-overlay.yml -f compose/cloud-${ENGINE}.yml"
+
             # Start engine on engine instance
-            aws ssm send-command \
-              --instance-ids ${{ steps.launch.outputs.engine_id }} \
-              --document-name "AWS-RunShellScript" \
-              --parameters commands="[
-                \"cd /opt/bench\",
-                \"docker compose -f compose/docker-compose.${ENGINE}.yml -p kv-${ENGINE} down -v --remove-orphans 2>/dev/null || true\",
-                \"docker compose -f compose/docker-compose.${ENGINE}.yml -f compose/cloud-overlay.yml -p kv-${ENGINE} up -d engine --wait --wait-timeout 120\"
-              ]" \
-              --timeout-seconds 300 \
-              --output text --query 'Command.CommandId' | xargs -I{} bash -c '
-                for i in $(seq 1 60); do
-                  S=$(aws ssm get-command-invocation --command-id {} --instance-id ${{ steps.launch.outputs.engine_id }} --query Status --output text 2>/dev/null || echo Pending)
-                  [ "$S" = "Success" ] && break
-                  [ "$S" = "Failed" ] && { echo "engine start failed"; exit 1; }
-                  sleep 5
-                done'
+            ssm_run "$ENGINE_ID" \
+              "cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${COMPOSE_FILES} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120"
 
             # Run benchmark on client instance
-            aws ssm send-command \
-              --instance-ids ${{ steps.launch.outputs.client_id }} \
-              --document-name "AWS-RunShellScript" \
-              --parameters commands="[
-                \"export ENGINE_HOST=${{ steps.engine_ip.outputs.ip }}\",
-                \"export CLOUD_MODE=1\",
-                \"cd /opt/bench\",
-                \"bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --output=/tmp/results-${ENGINE}.json\",
-                \"aws s3 cp /tmp/results-${ENGINE}.json s3://${{ steps.outputs.outputs.ResultsBucketName }}/$(date +%Y-%m-%d)/${ENGINE}.json\"
-              ]" \
-              --timeout-seconds 3600 \
-              --output text --query 'Command.CommandId' | xargs -I{} bash -c '
-                for i in $(seq 1 120); do
-                  S=$(aws ssm get-command-invocation --command-id {} --instance-id ${{ steps.launch.outputs.client_id }} --query Status --output text 2>/dev/null || echo Pending)
-                  [ "$S" = "Success" ] && break
-                  [ "$S" = "Failed" ] && { echo "benchmark failed"; exit 1; }
-                  sleep 30
-                done'
+            ssm_run "$CLIENT_ID" \
+              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json"
 
             # Stop engine
-            aws ssm send-command \
-              --instance-ids ${{ steps.launch.outputs.engine_id }} \
-              --document-name "AWS-RunShellScript" \
-              --parameters commands="[\"cd /opt/bench && docker compose -f compose/docker-compose.${ENGINE}.yml -p kv-${ENGINE} down -v --remove-orphans\"]" \
-              --timeout-seconds 120 \
-              --output text > /dev/null
+            ssm_run "$ENGINE_ID" \
+              "cd /opt/bench && docker compose ${COMPOSE_FILES} -p kv-${ENGINE} down -v --remove-orphans" || true
           done
 
-      - name: Upload artifacts
+      - name: Collect results
+        if: always()
+        env:
+          CLIENT_ID: ${{ steps.launch.outputs.client_id }}
+          RUN_ID: ${{ steps.launch.outputs.run_id }}
+          BUCKET: ${{ steps.outputs.outputs.ResultsBucketName }}
+          CLIENT_TYPE: ${{ inputs.client_type }}
+          ENGINE_THREADS: ${{ inputs.engine_threads }}
+          AMI: ${{ steps.meta.outputs.ami }}
+        run: |
+          set -euo pipefail
+
+          ssm_run() {
+            local INSTANCE=$1; shift
+            local CMD_ID
+            CMD_ID=$(aws ssm send-command \
+              --instance-ids "$INSTANCE" \
+              --document-name AWS-RunShellScript \
+              --timeout-seconds 120 \
+              --parameters "{\"commands\":[\"set -euo pipefail\n$*\"]}" \
+              --query 'Command.CommandId' --output text)
+            for _ in $(seq 1 30); do
+              STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE" \
+                --query 'Status' --output text 2>/dev/null || echo "Pending")
+              case "$STATUS" in
+                Success) return 0 ;;
+                Failed|TimedOut|Cancelled) return 1 ;;
+              esac
+              sleep 5
+            done
+            return 1
+          }
+
+          # Copy results from client to S3
+          ssm_run "$CLIENT_ID" \
+            "aws s3 cp /tmp/results.json s3://${BUCKET}/bench-runs/${RUN_ID}/results.json" || true
+
+          # Generate metadata on runner
+          cat > /tmp/metadata.json <<METAEOF
+          {
+            "runId": "${RUN_ID}",
+            "engineType": "c7g.metal",
+            "clientType": "${CLIENT_TYPE}",
+            "engineThreads": ${ENGINE_THREADS},
+            "ami": "${AMI}",
+            "region": "${{ inputs.region }}",
+            "matrix": "${{ inputs.matrix }}",
+            "gitSha": "${GITHUB_SHA}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          METAEOF
+          aws s3 cp /tmp/metadata.json "s3://${BUCKET}/bench-runs/${RUN_ID}/metadata.json"
+
+          # Pull results back to runner for artifact
+          mkdir -p /tmp/bench-output
+          aws s3 cp "s3://${BUCKET}/bench-runs/${RUN_ID}/results.json" /tmp/bench-output/results.json || true
+          cp /tmp/metadata.json /tmp/bench-output/metadata.json
+
+      - name: Upload results artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: kv-bench-results
-          path: /tmp/results-*.json
-          if-no-files-found: ignore
+          name: kv-bench-results-${{ steps.launch.outputs.run_id }}
+          path: /tmp/bench-output/
+          retention-days: 90
 
       - name: Terminate instances
         if: always()
         run: |
           set -euo pipefail
-          aws ec2 terminate-instances \
-            --instance-ids ${{ steps.launch.outputs.engine_id }} ${{ steps.launch.outputs.client_id }} \
-            2>/dev/null || true
-          echo "instances terminated"
+          INSTANCES=""
+          for id in "${{ steps.launch.outputs.engine_id }}" \
+                    "${{ steps.launch.outputs.client_id }}"; do
+            if [ -n "$id" ]; then INSTANCES="$INSTANCES $id"; fi
+          done
+          if [ -n "$INSTANCES" ]; then
+            aws ec2 terminate-instances --instance-ids $INSTANCES || true
+          fi
 
-      - name: Reap stale instances
-        if: always()
+  reaper:
+    name: Reap stale kv-bench instances
+    runs-on: ubuntu-latest
+    environment: kv-bench
+    if: always()
+    needs: benchmark
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-region: ${{ inputs.region || 'us-east-1' }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: kv-bench-reaper-${{ github.run_id }}
+          role-duration-seconds: 7200
+
+      - name: Terminate instances older than 3 hours
         run: |
-          set -euo pipefail
+          THREE_HOURS_AGO=$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -v-3H +%Y-%m-%dT%H:%M:%S)
           STALE=$(aws ec2 describe-instances \
-            --filters "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" \
-            --query "Reservations[].Instances[?LaunchTime<='$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -v-3H +%Y-%m-%dT%H:%M:%S)'].InstanceId" \
-            --output text 2>/dev/null || echo "")
+            --filters "Name=tag:Project,Values=kv-bench" \
+                      "Name=instance-state-name,Values=running,pending" \
+            --query "Reservations[].Instances[?LaunchTime<='${THREE_HOURS_AGO}'].InstanceId" \
+            --output text)
           if [ -n "$STALE" ] && [ "$STALE" != "None" ]; then
-            echo "reaping stale instances: $STALE"
+            echo "Terminating stale instances: $STALE"
             aws ec2 terminate-instances --instance-ids $STALE
+          else
+            echo "No stale instances found"
           fi

@@ -1,4 +1,4 @@
-import { type Session, type Engine, buildMatrix, composeFiles } from "./matrix.js";
+import { type Session, type Engine, buildMatrix } from "./matrix.js";
 import {
   type CellResult,
   composeUp,
@@ -45,11 +45,10 @@ for (const engine of engines) {
     .filter((s) => s.engine === engine)
     .sort((a, b) => {
       const order = [
+        "memory-load",
         "set-get-small",
         "set-get-large",
-        "pipeline-1",
         "pipeline-30",
-        "memory-load",
       ];
       return order.indexOf(a.workload) - order.indexOf(b.workload);
     });
@@ -82,19 +81,19 @@ for (const [engine, cycleSessions] of cycleMap) {
       allResults.some((r) => r.label === s.label),
     )
   ) {
-    console.log(`⏭ skipping ${engine} (all sessions already completed)`);
+    console.log(`  skipping ${engine} (all sessions already completed)`);
     continue;
   }
 
   const anchor = cycleSessions[0]!;
-  console.log(`\n▶ ${engine}`);
+  console.log(`\n> ${engine}`);
 
   try {
     await composeUp(anchor);
 
     for (const session of cycleSessions) {
       if (resume && allResults.some((r) => r.label === session.label)) {
-        console.log(`  ⏭ skipping ${session.workload} (already completed)`);
+        console.log(`  skipping ${session.workload} (already completed)`);
         continue;
       }
 
@@ -106,7 +105,7 @@ for (const [engine, cycleSessions] of cycleMap) {
         allResults.push(result);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`  ✗ ${session.label}: ${msg}`);
+        console.error(`  x ${session.label}: ${msg}`);
         allFailures.push({ label: session.label, error: msg });
       }
     }
@@ -124,11 +123,11 @@ for (const [engine, cycleSessions] of cycleMap) {
     failures: allFailures,
   };
   await Bun.write(outputPath, JSON.stringify(output, null, 2) + "\n");
-  console.log(`  💾 saved (${allResults.length} results so far)`);
+  console.log(`  saved (${allResults.length} results so far)`);
 }
 
 console.log(
-  `\n✓ done — ${allResults.length} results, ${allFailures.length} failures`,
+  `\ndone — ${allResults.length} results, ${allFailures.length} failures`,
 );
 if (allFailures.length > 0) {
   console.log("Failures:");

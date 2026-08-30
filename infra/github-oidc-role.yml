@@ -2,24 +2,26 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: GitHub OIDC deploy role for warefeats/kv-stores
 
 Parameters:
-  GitHubOrganization:
+  GitHubOrg:
     Type: String
     Default: warefeats
   GitHubRepository:
     Type: String
     Default: kv-stores
-  RepositoryId:
-    Type: String
-    Description: Numeric GitHub repository ID (gh api repos/warefeats/kv-stores --jq .id)
-  OrgId:
+  GitHubOrgId:
     Type: String
     Default: "322872963"
-    Description: Numeric GitHub organization ID
+    Description: Numeric org ID (gh api orgs/warefeats -q .id).
+  RepositoryId:
+    Type: String
+    Description: Numeric repository ID (gh api repos/warefeats/kv-stores -q .id). Required for immutable ID-form subject claims.
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: Supply the account's existing token.actions.githubusercontent.com provider ARN, or leave empty to create one.
 
 Conditions:
-  CreateOidcProvider: !Equals
-    - !Ref "AWS::StackName"
-    - "NEVER_CREATE"
+  CreateOidcProvider: !Equals [!Ref ExistingOidcProviderArn, ""]
 
 Resources:
   OidcProvider:
@@ -31,27 +33,32 @@ Resources:
         - sts.amazonaws.com
       ThumbprintList:
         - 6938fd4d98bab03faadb97b34396831e3780aea1
-        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
 
   DeployRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: kv-stores-github-deploy
+      Description: Deploys the kv-bench CDK stack and runs cloud benchmarks.
       MaxSessionDuration: 7200
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
-              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+              Federated: !If
+                - CreateOidcProvider
+                - !Ref OidcProvider
+                - !Ref ExistingOidcProviderArn
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
                 token.actions.githubusercontent.com:sub:
-                  - !Sub "repo:${GitHubOrganization}/${GitHubRepository}:*"
-                  - !Sub "repo:${OrgId}:${RepositoryId}:*"
+                  - !Sub repo:${GitHubOrg}/${GitHubRepository}:ref:refs/heads/main
+                  - !Sub repo:${GitHubOrg}/${GitHubRepository}:environment:kv-bench
+                  - !Sub "repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepository}@${RepositoryId}:ref:refs/heads/main"
+                  - !Sub "repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepository}@${RepositoryId}:environment:kv-bench"
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/PowerUserAccess
       Policies:
@@ -63,10 +70,33 @@ Resources:
                 Effect: Allow
                 Action:
                   - ec2:RunInstances
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:instance/*"
                 Condition:
                   StringEquals:
                     aws:RequestTag/Project: kv-bench
+              - Sid: LaunchSupportResources
+                Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                Resource:
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:launch-template/*"
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:security-group/*"
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:subnet/*"
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:volume/*"
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:network-interface/*"
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:placement-group/*"
+                  - !Sub "arn:aws:ec2:*::image/*"
+              - Sid: TagOnCreate
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                Resource:
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:instance/*"
+                  - !Sub "arn:aws:ec2:*:${AWS::AccountId}:volume/*"
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: RunInstances
               - Sid: ManageTaggedInstances
                 Effect: Allow
                 Action:
@@ -81,6 +111,7 @@ Resources:
                 Action:
                   - ec2:DescribeInstances
                   - ec2:DescribeInstanceStatus
+                  - ec2:DescribeInstanceTypeOfferings
                   - ec2:DescribeLaunchTemplates
                   - ec2:DescribeLaunchTemplateVersions
                   - ec2:DescribeAvailabilityZones
@@ -97,6 +128,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - s3:PutObject
+                  - s3:GetObject
                 Resource: !Sub "arn:aws:s3:::warefeats-kv-bench-results-${AWS::AccountId}/*"
               - Sid: DescribeStacks
                 Effect: Allow
@@ -110,4 +142,5 @@ Resources:
 
 Outputs:
   RoleArn:
+    Description: Store this value as the AWS_ROLE_ARN GitHub Actions secret.
     Value: !GetAtt DeployRole.Arn

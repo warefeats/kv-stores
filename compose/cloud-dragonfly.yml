@@ -1,0 +1,10 @@
+services:
+  engine:
+    command: >
+      dragonfly
+      --logtostderr
+      --maxmemory 17179869184
+      --cache_mode
+      --proactor_threads ${ENGINE_THREADS:-64}
+      --dbfilename ""
+      --port 6379

@@ -1,0 +1,10 @@
+services:
+  engine:
+    command: >
+      redis-server
+      --maxmemory 17179869184
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+      --protected-mode no
+      --bind 0.0.0.0

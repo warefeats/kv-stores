@@ -41,15 +41,15 @@ export class KvBenchStack extends cdk.Stack {
 
     const userData = ec2.UserData.forLinux();
     userData.addCommands(
+      "set -euxo pipefail",
       "shutdown -h +120",
+      "export DEBIAN_FRONTEND=noninteractive",
       "apt-get update -y",
-      "apt-get install -y docker.io docker-compose-v2 docker-buildx jq curl git awscli",
+      "apt-get install -y docker.io docker-compose-v2 docker-buildx jq curl git awscli redis-tools",
       "systemctl enable docker && systemctl start docker",
-      "curl -fsSL https://bun.sh/install | bash",
-      'export BUN_INSTALL="/root/.bun"',
-      'export PATH="$BUN_INSTALL/bin:$PATH"',
-      "git clone https://github.com/warefeats/kv-stores.git /opt/bench",
-      "cd /opt/bench && bun install",
+      "curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash",
+      "git clone --depth 1 https://github.com/warefeats/kv-stores.git /opt/bench",
+      "cd /opt/bench && bun install --frozen-lockfile",
     );
 
     const engineLt = new ec2.LaunchTemplate(this, "EngineLt", {
@@ -78,7 +78,7 @@ export class KvBenchStack extends cdk.Stack {
     );
 
     const clientLt = new ec2.LaunchTemplate(this, "ClientLt", {
-      instanceType: new ec2.InstanceType("c7g.xlarge"),
+      instanceType: new ec2.InstanceType("c7g.4xlarge"),
       machineImage: ec2.MachineImage.fromSsmParameter(
         "/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id",
       ),

@@ -7,6 +7,7 @@ services:
       --maxmemory 1073741824
       --cache_mode
       --proactor_threads 4
+      --dbfilename ""
       --port 6379
     ports:
       - "6379:6379"
