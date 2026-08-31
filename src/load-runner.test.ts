@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseProcStat, computeCpuPercent } from "./load-runner.js";
+import { parseProcStat, computeCpuPercent, parseServerVersion } from "./load-runner.js";
 
 describe("parseProcStat", () => {
   test("parses aggregate cpu line", () => {
@@ -47,5 +47,40 @@ describe("computeCpuPercent", () => {
     const before = { idle: 0, total: 0 };
     const after = { idle: 333, total: 1000 };
     expect(computeCpuPercent(before, after)).toBe(66.7);
+  });
+});
+
+describe("parseServerVersion", () => {
+  test("picks redis_version for Redis", () => {
+    const info = [
+      "# Server",
+      "redis_version:8.8.2",
+      "redis_git_sha1:00000000",
+    ].join("\r\n");
+    expect(parseServerVersion(info)).toBe("8.8.2");
+  });
+
+  test("picks valkey_version over redis_version for Valkey", () => {
+    const info = [
+      "# Server",
+      "redis_version:7.2.4",
+      "valkey_version:9.1.1",
+      "redis_git_sha1:00000000",
+    ].join("\r\n");
+    expect(parseServerVersion(info)).toBe("9.1.1");
+  });
+
+  test("picks dragonfly_version over redis_version for Dragonfly", () => {
+    const info = [
+      "# Server",
+      "redis_version:7.4.0",
+      "dragonfly_version:1.40.1",
+      "redis_git_sha1:00000000",
+    ].join("\r\n");
+    expect(parseServerVersion(info)).toBe("1.40.1");
+  });
+
+  test("returns unknown for empty input", () => {
+    expect(parseServerVersion("")).toBe("unknown");
   });
 });

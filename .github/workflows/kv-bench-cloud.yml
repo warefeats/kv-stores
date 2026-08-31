@@ -217,9 +217,11 @@ jobs:
             ssm_run "$ENGINE_ID" \
               "cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${COMPOSE_FILES} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120"
 
+            ENGINE_IMG=$(grep -m1 '^\s*image:' compose/docker-compose.${ENGINE}.yml | awk '{print $2}')
+
             # Run benchmark on client instance
             ssm_run "$CLIENT_ID" \
-              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 MEMTIER_THREADS=${MEMTIER_THREADS} MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json"
+              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 ENGINE_IMAGE=${ENGINE_IMG} MEMTIER_THREADS=${MEMTIER_THREADS} MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json"
 
             # Stop engine
             ssm_run "$ENGINE_ID" \

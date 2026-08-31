@@ -36,6 +36,7 @@ export interface CellResult {
 
 export interface EngineConfig {
   engineImage: string;
+  serverVersion: string;
   maxmemoryBytes: number;
   threads: number;
   memtierThreads: number;
@@ -69,6 +70,16 @@ export function computeCpuPercent(before: CpuSample, after: CpuSample): number {
   const idleDelta = after.idle - before.idle;
   if (totalDelta <= 0) return 0;
   return Math.round((1 - idleDelta / totalDelta) * 1000) / 10;
+}
+
+export function parseServerVersion(infoServer: string): string {
+  const df = infoServer.match(/^dragonfly_version:(.+)/m);
+  if (df) return df[1]!.trim();
+  const vk = infoServer.match(/^valkey_version:(.+)/m);
+  if (vk) return vk[1]!.trim();
+  const rd = infoServer.match(/^redis_version:(.+)/m);
+  if (rd) return rd[1]!.trim();
+  return "unknown";
 }
 
 async function readProcStat(): Promise<CpuSample | null> {
@@ -269,6 +280,7 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
   let maxmemoryBytes = 0;
   let threads = 1;
   let engineImage = "";
+  let serverVersion = "unknown";
 
   if (isCloud) {
     const infoMem = await $`redis-cli -h ${engineHost} -p 6379 INFO memory`.text().catch(() => "");
@@ -276,8 +288,8 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
     maxmemoryBytes = maxMem ? parseInt(maxMem[1]!, 10) : 0;
 
     const infoServer = await $`redis-cli -h ${engineHost} -p 6379 INFO server`.text().catch(() => "");
-    const verMatch = infoServer.match(/^(?:redis|valkey|dragonfly)_version:(.+)/m);
-    engineImage = verMatch ? verMatch[1]!.trim() : "unknown";
+    serverVersion = parseServerVersion(infoServer);
+    engineImage = process.env.ENGINE_IMAGE || "unknown";
 
     if (session.engine === "dragonfly") {
       const threadsMatch = infoServer.match(/^used_threads:(\d+)/m) ??
@@ -291,6 +303,9 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
     const maxMem = infoMem.match(/^maxmemory:(\d+)/m);
     maxmemoryBytes = maxMem ? parseInt(maxMem[1]!, 10) : 0;
 
+    const infoServer = await $`docker compose ${flags} -p ${p} exec -T client redis-cli -h engine INFO server`.text().catch(() => "");
+    serverVersion = parseServerVersion(infoServer);
+
     const inspectRaw = await $`docker inspect ${p}-engine-1 --format {{.Config.Image}}`.text().catch(() => "unknown");
     engineImage = inspectRaw.trim();
 
@@ -303,6 +318,7 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
 
   return {
     engineImage,
+    serverVersion,
     maxmemoryBytes,
     threads,
     memtierThreads: wlConfig.threads,

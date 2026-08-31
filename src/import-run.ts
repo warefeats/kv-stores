@@ -42,6 +42,7 @@ export interface RawResult {
   metrics: Record<string, { value: number; unit: string; label?: string }>;
   config?: {
     engineImage: string;
+    serverVersion?: string;
     maxmemoryBytes: number;
     threads: number;
     memtierThreads?: number;
@@ -267,10 +268,11 @@ function buildCandidate(
     };
   }
 
+  const serverVersion = results[0]?.config?.serverVersion;
   return {
     id: engine,
     name: meta.name,
-    version: meta.version,
+    version: serverVersion || meta.version,
     logo: meta.logo,
     color: meta.color,
     homepage: meta.homepage,
