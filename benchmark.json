@@ -25,5 +25,7 @@
     "No TLS overhead measured in this benchmark.",
     "Eviction policy: Redis/Valkey use allkeys-lru (sampled LRU); Dragonfly uses --cache_mode (DASH-based eviction) since it does not expose maxmemory-policy as a CLI flag. The algorithms differ internally, which may affect eviction fairness under memory pressure."
   ],
-  "runs": []
+  "runs": [
+    "runs/2026-08-31-aws-graviton3.json"
+  ]
 }

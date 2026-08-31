@@ -389,9 +389,10 @@ export async function importRun(
     throw new Error("Import produced 0 sections — need results for at least 2 engines per workload");
   }
 
-  const firstConfig = raw.results[0]?.config;
-  const clientSizing = firstConfig?.memtierThreads != null
-    ? `memtier: ${firstConfig.memtierThreads} threads × ${firstConfig.memtierClients} clients = ${firstConfig.totalConnections} connections`
+  const throughputResult = raw.results.find((r) => r.workload !== "memory-load") ?? raw.results[0];
+  const throughputConfig = throughputResult?.config;
+  const clientSizing = throughputConfig?.memtierThreads != null
+    ? `memtier: ${throughputConfig.memtierThreads} threads × ${throughputConfig.memtierClients} clients = ${throughputConfig.totalConnections} connections`
     : undefined;
 
   const run: BenchmarkRun = {
