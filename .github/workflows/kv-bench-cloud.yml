@@ -101,14 +101,14 @@ jobs:
           echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
 
           ENGINE_ID=$(aws ec2 run-instances \
-            --launch-template LaunchTemplateId=${{ steps.outputs.outputs.EngineLtId }} \
+            --launch-template "LaunchTemplateId=${{ steps.outputs.outputs.EngineLtId }},Version=\$Latest" \
             --subnet-id "${{ steps.az.outputs.subnet }}" \
             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_ID}-engine},{Key=Project,Value=$PROJECT_TAG}]" \
             --query 'Instances[0].InstanceId' --output text)
           echo "engine_id=$ENGINE_ID" >> "$GITHUB_OUTPUT"
 
           CLIENT_ID=$(aws ec2 run-instances \
-            --launch-template LaunchTemplateId=${{ steps.outputs.outputs.ClientLtId }} \
+            --launch-template "LaunchTemplateId=${{ steps.outputs.outputs.ClientLtId }},Version=\$Latest" \
             --instance-type "${{ inputs.client_type }}" \
             --subnet-id "${{ steps.az.outputs.subnet }}" \
             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_ID}-client},{Key=Project,Value=$PROJECT_TAG}]" \
