@@ -121,7 +121,7 @@ const ENGINE_META: Record<
   {
     name: string;
     version: string;
-    logo: string;
+    logo?: string;
     color: string;
     homepage: string;
   }
@@ -136,14 +136,12 @@ const ENGINE_META: Record<
   valkey: {
     name: "Valkey",
     version: "9.1.1",
-    logo: "/logos/valkey.svg",
     color: "#5D6DBF",
     homepage: "https://valkey.io",
   },
   dragonfly: {
     name: "Dragonfly",
     version: "1.40.1",
-    logo: "/logos/dragonfly.svg",
     color: "#00C7B7",
     homepage: "https://www.dragonflydb.io",
   },
