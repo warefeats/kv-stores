@@ -9,7 +9,6 @@ export class KvBenchStack extends cdk.Stack {
     super(scope, id, props);
 
     const bucket = new s3.Bucket(this, "ResultsBucket", {
-      bucketName: `warefeats-kv-bench-results-${this.account}`,
       lifecycleRules: [{ expiration: cdk.Duration.days(90) }],
       autoDeleteObjects: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
