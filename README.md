@@ -40,6 +40,15 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 
 **Preload**: Before each GET-bearing workload's warmup passes, the runner fills the entire keyspace with a deterministic sequential load (`--ratio=1:0 --key-pattern=P:P`). This ensures every GET is a hit. The measured hit ratio is published per workload and asserted >= 99% in CI.
 
+**Client sizing**: Memtier threads and clients auto-scale to the runner host in cloud mode (`max(2, nproc − 2)` threads, clients adjusted to hold ~200 total connections in full / ~20 in smoke). The `MEMTIER_THREADS` env overrides auto-detection. Client CPU utilization is sampled per pass via `/proc/stat` and published in the results — if client CPU exceeds ~80%, the client is the bottleneck and the connection count should be increased. Local runs keep the default 4 threads x 50 clients (full) to fit within Docker resource limits.
+
+| Mode | Threads | Clients | Total connections |
+|------|---------|---------|-------------------|
+| Local smoke | 2 | 10 | 20 |
+| Local full | 4 | 50 | 200 |
+| Cloud smoke (c7g.4xlarge, 16 vCPU) | 14 | 1 | 14 |
+| Cloud full (c7g.4xlarge, 16 vCPU) | 14 | 14 | 196 |
+
 **Distinct client seed**: Every memtier invocation uses `--distinct-client-seed` so parallel clients access different keys, avoiding artificial hot-key contention.
 
 **Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of both `used_memory` and cgroup RSS is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral).

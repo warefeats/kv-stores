@@ -17,6 +17,7 @@ export interface RunMetadata {
     processModel: string;
     cacheState: string;
     output: string;
+    clientSizing?: string;
   };
 }
 
@@ -43,6 +44,9 @@ export interface RawResult {
     engineImage: string;
     maxmemoryBytes: number;
     threads: number;
+    memtierThreads?: number;
+    memtierClients?: number;
+    totalConnections?: number;
     memtierVersion: string;
     cloudMode: boolean;
   };
@@ -385,13 +389,18 @@ export async function importRun(
     throw new Error("Import produced 0 sections — need results for at least 2 engines per workload");
   }
 
+  const firstConfig = raw.results[0]?.config;
+  const clientSizing = firstConfig?.memtierThreads != null
+    ? `memtier: ${firstConfig.memtierThreads} threads × ${firstConfig.memtierClients} clients = ${firstConfig.totalConnections} connections`
+    : undefined;
+
   const run: BenchmarkRun = {
     schemaVersion: 1,
     id,
     label: meta.label,
     publishedAt: meta.publishedAt,
     environment: meta.environment,
-    protocol: meta.protocol,
+    protocol: { ...meta.protocol, ...(clientSizing ? { clientSizing } : {}) },
     sections,
   };
 

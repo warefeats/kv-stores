@@ -38,6 +38,9 @@ export interface EngineConfig {
   engineImage: string;
   maxmemoryBytes: number;
   threads: number;
+  memtierThreads: number;
+  memtierClients: number;
+  totalConnections: number;
   memtierVersion: string;
   cloudMode: boolean;
 }
@@ -262,7 +265,7 @@ function findNumericField(
 }
 
 export async function detectEngineConfig(session: Session): Promise<EngineConfig> {
-  const cFiles = composeFiles(session);
+  const wlConfig = workloadConfig(session.workload);
   let maxmemoryBytes = 0;
   let threads = 1;
   let engineImage = "";
@@ -302,6 +305,9 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
     engineImage,
     maxmemoryBytes,
     threads,
+    memtierThreads: wlConfig.threads,
+    memtierClients: wlConfig.clients,
+    totalConnections: wlConfig.threads * wlConfig.clients,
     memtierVersion: "2.5.1",
     cloudMode: isCloud,
   };

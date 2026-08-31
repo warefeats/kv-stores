@@ -23,6 +23,10 @@ on:
         description: "Client EC2 instance type"
         required: false
         default: "c7g.4xlarge"
+      memtier_threads:
+        description: "Memtier benchmark threads (empty = auto: nproc - 2)"
+        required: false
+        default: ""
       region:
         description: "AWS region"
         required: false
@@ -156,6 +160,7 @@ jobs:
           CLIENT_ID: ${{ steps.launch.outputs.client_id }}
           ENGINE_IP: ${{ steps.engine_ip.outputs.ip }}
           ENGINE_THREADS: ${{ inputs.engine_threads }}
+          MEMTIER_THREADS: ${{ inputs.memtier_threads }}
           BUCKET: ${{ steps.outputs.outputs.ResultsBucketName }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -214,7 +219,7 @@ jobs:
 
             # Run benchmark on client instance
             ssm_run "$CLIENT_ID" \
-              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json"
+              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 MEMTIER_THREADS=${MEMTIER_THREADS} MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json"
 
             # Stop engine
             ssm_run "$ENGINE_ID" \

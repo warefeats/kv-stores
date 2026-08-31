@@ -1,3 +1,5 @@
+import { cpus } from "os";
+
 export type Engine = "redis" | "valkey" | "dragonfly";
 export type Workload =
   | "set-get-small"
@@ -34,15 +36,57 @@ export const WORKLOADS: Workload[] = [
 ];
 
 const smokeMode = process.argv.includes("--smoke");
+const isCloud = process.env.CLOUD_MODE === "1";
+
+export interface MemtierSizing {
+  threads: number;
+  clients: number;
+  totalConnections: number;
+}
+
+export function memtierSizing(smoke: boolean): MemtierSizing {
+  const envThreads = process.env.MEMTIER_THREADS;
+  let threads: number;
+
+  if (envThreads) {
+    threads = Math.max(1, parseInt(envThreads, 10) || 1);
+  } else if (isCloud) {
+    threads = Math.max(2, cpus().length - 2);
+  } else {
+    threads = smoke ? 2 : 4;
+  }
+
+  const targetConns = smoke ? 20 : 200;
+  const clients = Math.max(1, Math.round(targetConns / threads));
+
+  return { threads, clients, totalConnections: threads * clients };
+}
 
 export function workloadConfig(
   workload: Workload,
   smoke: boolean = smokeMode,
 ): WorkloadConfig {
+  if (workload === "memory-load") {
+    return {
+      ratio: "1:0",
+      dataSize: 100,
+      pipeline: 1,
+      threads: 1,
+      clients: 1,
+      testTime: 0,
+      requests: smoke ? 100_000 : 1_000_000,
+      keyPattern: "P:P",
+      keyMax: smoke ? 100_000 : 1_000_000,
+      warmupPasses: 0,
+      measuredPasses: 1,
+    };
+  }
+
   const base = {
     warmupPasses: smoke ? 1 : 2,
     measuredPasses: smoke ? 2 : 10,
   };
+  const sizing = memtierSizing(smoke);
 
   switch (workload) {
     case "set-get-small":
@@ -51,8 +95,8 @@ export function workloadConfig(
         ratio: "1:10",
         dataSize: 100,
         pipeline: 1,
-        threads: smoke ? 2 : 4,
-        clients: smoke ? 10 : 50,
+        threads: sizing.threads,
+        clients: sizing.clients,
         testTime: smoke ? 5 : 10,
         requests: 0,
         keyPattern: "R:R",
@@ -64,8 +108,8 @@ export function workloadConfig(
         ratio: "1:10",
         dataSize: 10_240,
         pipeline: 1,
-        threads: smoke ? 2 : 4,
-        clients: smoke ? 10 : 50,
+        threads: sizing.threads,
+        clients: sizing.clients,
         testTime: smoke ? 5 : 10,
         requests: 0,
         keyPattern: "R:R",
@@ -77,27 +121,12 @@ export function workloadConfig(
         ratio: "1:10",
         dataSize: 100,
         pipeline: 30,
-        threads: smoke ? 2 : 4,
-        clients: smoke ? 10 : 50,
+        threads: sizing.threads,
+        clients: sizing.clients,
         testTime: smoke ? 5 : 10,
         requests: 0,
         keyPattern: "R:R",
         keyMax: 100_000,
-      };
-    case "memory-load":
-      return {
-        ...base,
-        ratio: "1:0",
-        dataSize: 100,
-        pipeline: 1,
-        threads: 1,
-        clients: 1,
-        testTime: 0,
-        requests: smoke ? 100_000 : 1_000_000,
-        keyPattern: "P:P",
-        keyMax: smoke ? 100_000 : 1_000_000,
-        warmupPasses: 0,
-        measuredPasses: 1,
       };
   }
 }
