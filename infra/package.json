@@ -9,5 +9,8 @@
   },
   "devDependencies": {
     "aws-cdk": "2.1029.2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
   }
 }
