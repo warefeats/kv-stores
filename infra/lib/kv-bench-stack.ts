@@ -43,6 +43,8 @@ export class KvBenchStack extends cdk.Stack {
       "set -euxo pipefail",
       "shutdown -h +120",
       "export DEBIAN_FRONTEND=noninteractive",
+      // unattended-upgrades runs at first boot and holds the dpkg lock for a while
+      "while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 5; done",
       "apt-get update -y",
       "apt-get install -y docker.io docker-compose-v2 docker-buildx jq curl git unzip redis-tools",
       "systemctl enable docker && systemctl start docker",
