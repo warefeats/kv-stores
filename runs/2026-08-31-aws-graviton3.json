@@ -452,7 +452,7 @@
       "verdict": {
         "winnerId": "dragonfly",
         "headline": "Dragonfly 112.8 MB RSS delta (118 B/key); Redis 158 MB (166 B/key); Valkey 163 MB (171 B/key)",
-        "summary": "Baseline-corrected RSS after loading 1M keys with 100-byte values. Dragonfly's DASH-based tables used 29% less memory than Redis and 31% less than Valkey."
+        "summary": "Baseline-corrected RSS after loading 1M keys with 100-byte values. Dragonfly used 29% less memory than Redis and 31% less than Valkey."
       },
       "candidates": [
         {
