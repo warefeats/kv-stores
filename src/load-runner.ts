@@ -28,6 +28,7 @@ export interface CellResult {
   p999Ms: number;
   samplesOpsPerSec: number[];
   samplesP99Ms: number[];
+  samplesClientCpuPct: (number | null)[];
   engineStats: EngineStats;
   metrics: Record<string, { value: number; unit: string; label?: string }>;
   config: EngineConfig;
@@ -44,6 +45,38 @@ export interface EngineConfig {
 const isCloud = process.env.CLOUD_MODE === "1";
 const engineHost = process.env.ENGINE_HOST || "engine";
 const memtierImage = process.env.MEMTIER_IMAGE || "ghcr.io/warefeats/memtier-benchmark:2.5.1";
+
+export interface CpuSample {
+  idle: number;
+  total: number;
+}
+
+export function parseProcStat(raw: string): CpuSample | null {
+  const line = raw.split("\n").find((l) => l.startsWith("cpu "));
+  if (!line) return null;
+  const parts = line.trim().split(/\s+/).slice(1).map(Number);
+  if (parts.length < 5) return null;
+  const total = parts.reduce((a, b) => a + b, 0);
+  const idle = (parts[3] ?? 0) + (parts[4] ?? 0);
+  return { idle, total };
+}
+
+export function computeCpuPercent(before: CpuSample, after: CpuSample): number {
+  const totalDelta = after.total - before.total;
+  const idleDelta = after.idle - before.idle;
+  if (totalDelta <= 0) return 0;
+  return Math.round((1 - idleDelta / totalDelta) * 1000) / 10;
+}
+
+async function readProcStat(): Promise<CpuSample | null> {
+  try {
+    const raw = await Bun.file("/proc/stat").text();
+    return parseProcStat(raw);
+  } catch {
+    // /proc/stat not available (macOS, containers without procfs)
+    return null;
+  }
+}
 
 function fFlags(session: Session): string[] {
   return composeFiles(session)
@@ -296,14 +329,20 @@ export async function runThroughputWorkload(
 
   const samplesOpsPerSec: number[] = [];
   const samplesP99Ms: number[] = [];
+  const samplesClientCpuPct: (number | null)[] = [];
   const allResults: MemtierResult[] = [];
 
   for (let i = 0; i < config.measuredPasses; i++) {
     console.log(`    measured ${i + 1}/${config.measuredPasses}`);
+    const cpuBefore = await readProcStat();
     const result = await runMemtierPass(session, config);
+    const cpuAfter = await readProcStat();
     allResults.push(result);
     samplesOpsPerSec.push(result.opsPerSec);
     samplesP99Ms.push(result.p99Ms);
+    samplesClientCpuPct.push(
+      cpuBefore && cpuAfter ? computeCpuPercent(cpuBefore, cpuAfter) : null,
+    );
   }
 
   const stats = await collectStats(session.engine, proj(session), cFiles);
@@ -314,8 +353,13 @@ export async function runThroughputWorkload(
   const medianP50 = median(allResults.map((r) => r.p50Ms));
   const medianP999 = median(allResults.map((r) => r.p999Ms));
 
+  const validCpu = samplesClientCpuPct.filter((s): s is number => s !== null);
+  const meanClientCpu = validCpu.length > 0
+    ? r(validCpu.reduce((a, b) => a + b, 0) / validCpu.length, 1)
+    : null;
+
   console.log(
-    `    → ${r(medianOps)} ops/s, p50=${r(medianP50, 3)}ms, p99=${r(medianP99, 3)}ms, hit ratio=${r(stats.hitRatio * 100, 1)}%`,
+    `    → ${r(medianOps)} ops/s, p50=${r(medianP50, 3)}ms, p99=${r(medianP99, 3)}ms, hit ratio=${r(stats.hitRatio * 100, 1)}%${meanClientCpu !== null ? `, client CPU=${meanClientCpu}%` : ""}`,
   );
 
   return {
@@ -328,12 +372,14 @@ export async function runThroughputWorkload(
     p999Ms: medianP999,
     samplesOpsPerSec,
     samplesP99Ms,
+    samplesClientCpuPct,
     engineStats: stats,
     config: engineConfig,
     metrics: {
       throughput: { value: medianOps, unit: "ops/s", label: "Throughput" },
       kbPerSec: { value: median(allResults.map((r) => r.kbPerSec)), unit: "KB/s", label: "Bandwidth" },
       hitRatio: { value: r(stats.hitRatio * 100, 1), unit: "%", label: "Hit ratio" },
+      ...(meanClientCpu !== null ? { clientCpu: { value: meanClientCpu, unit: "%", label: "Client CPU" } } : {}),
     },
   };
 }
@@ -350,7 +396,10 @@ export async function runMemoryWorkload(
   const baselineStats = await collectStats(session.engine, proj(session), cFiles);
   console.log(`    baseline: ${r(baselineStats.usedMemoryMb, 2)}MB used, ${r(baselineStats.usedMemoryRssMb, 2)}MB RSS`);
 
+  const cpuBefore = await readProcStat();
   await runMemtierPass(session, config);
+  const cpuAfter = await readProcStat();
+  const clientCpuPct = cpuBefore && cpuAfter ? computeCpuPercent(cpuBefore, cpuAfter) : null;
 
   const postStats = await collectStats(session.engine, proj(session), cFiles);
   const engineConfig = await detectEngineConfig(session);
@@ -381,6 +430,7 @@ export async function runMemoryWorkload(
     p999Ms: 0,
     samplesOpsPerSec: [0],
     samplesP99Ms: [0],
+    samplesClientCpuPct: [clientCpuPct],
     engineStats: postStats,
     config: engineConfig,
     metrics: {
@@ -391,6 +441,7 @@ export async function runMemoryWorkload(
       keyCount: { value: postStats.keyCount, unit: "keys", label: "Key count" },
       bytesPerKeyRss: { value: r(bytesPerKeyRss, 1), unit: "B/key", label: "Memory per key (RSS)" },
       bytesPerKeyUsed: { value: r(bytesPerKeyUsed, 1), unit: "B/key", label: "Memory per key (used_memory)" },
+      ...(clientCpuPct !== null ? { clientCpu: { value: clientCpuPct, unit: "%", label: "Client CPU" } } : {}),
     },
   };
 }

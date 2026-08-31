@@ -30,6 +30,7 @@ export interface RawResult {
   p999Ms: number;
   samplesOpsPerSec: number[];
   samplesP99Ms: number[];
+  samplesClientCpuPct?: (number | null)[];
   engineStats: {
     rssMb: number;
     usedMemoryMb: number;
