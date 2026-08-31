@@ -20,7 +20,7 @@ export class KvBenchStack extends cdk.Stack {
 
     const sg = new ec2.SecurityGroup(this, "BenchSg", {
       vpc,
-      description: "KV bench — intra-group traffic only",
+      description: "KV bench - intra-group traffic only",
       allowAllOutbound: true,
     });
     sg.addIngressRule(sg, ec2.Port.allTraffic(), "intra-group");

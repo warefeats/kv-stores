@@ -74,6 +74,7 @@ setup-oidc:
             GitHubRepository=kv-stores \
             RepositoryId="${REPO_ID}" \
             GitHubOrgId="${GITHUB_ORG_ID}" \
+            ExistingOidcProviderArn=arn:aws:iam::735853783919:oidc-provider/token.actions.githubusercontent.com \
         --region {{aws_region}}
 
     ROLE_ARN=$(aws cloudformation describe-stacks \
