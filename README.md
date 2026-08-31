@@ -2,9 +2,9 @@
 
 In-memory key-value store comparison using [memtier_benchmark](https://github.com/RedisLabs/memtier_benchmark). Part of the [warefeats](https://warefeats.com) benchmark suite.
 
-## Status
+## Published run
 
-Scaffold complete. No published run yet — first cloud run is TODO.
+- **2026-08-31** — AWS Graviton3 cloud rig (c7g.metal engine + c7g.4xlarge client, cluster placement group). Full run: 2 warmups, 10 measured passes per engine per workload. See [`runs/2026-08-31-aws-graviton3.json`](runs/2026-08-31-aws-graviton3.json).
 
 ## Engines
 

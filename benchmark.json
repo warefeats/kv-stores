@@ -4,13 +4,13 @@
   "slug": "redis-vs-valkey-vs-dragonfly-kv",
   "category": "Caches",
   "title": "Redis vs Valkey vs Dragonfly",
-  "deck": "Three in-memory key-value stores tested across SET/GET throughput, pipelining, and memory efficiency with memtier_benchmark.",
+  "deck": "In-memory SET/GET throughput, pipelining, and memory efficiency — Redis 8 vs Valkey 9 vs Dragonfly 1.40 on dedicated ARM hardware.",
   "unit": "ms",
   "lowerIsBetter": true,
   "verdict": {
-    "winnerId": "TODO",
-    "headline": "TODO — awaiting first published cloud run",
-    "summary": "TODO — verdict will be written from real cloud run data, not local smoke results."
+    "winnerId": "dragonfly",
+    "headline": "Dragonfly led every section; Redis and Valkey tracked within a few percent of each other",
+    "summary": "Dragonfly 1.40.1 (64 threads) reached 1.20M ops/s on small-value SET/GET — 6.9x Redis's 174K ops/s, at 0.33 ms p99 vs 2.09 ms. Pipeline depth 30 widened the gap to 8.8x (12.8M vs 1.45M ops/s). Large values closed to 1.9x, likely network-limited. Dragonfly also used 29% less RSS per key. Redis 8.8.2 and Valkey 9.1.1 tracked within 1% of each other on SET/GET workloads and within 8% on pipelining."
   },
   "trademarks": [
     "Redis is a registered trademark of Redis Ltd.",
@@ -18,12 +18,14 @@
     "Dragonfly is a trademark of DragonflyDB Ltd."
   ],
   "limitations": [
-    "KeyDB omitted: the project is effectively unmaintained (last release 2023, open issues unresolved).",
-    "Each engine runs at its default threading configuration — single-threaded I/O for Redis and Valkey, multi-threaded for Dragonfly. This is intentional: the comparison measures what you get out of the box, not a hand-tuned configuration.",
-    "Local runs use a single-host topology where client and server share the same machine's resources. Network latency and CPU contention differ from a dedicated two-host setup. Cloud runs on separate instances eliminate this.",
-    "No clustering or replication — all tests target a single standalone instance.",
-    "No TLS overhead measured in this benchmark.",
-    "Eviction policy: Redis/Valkey use allkeys-lru (sampled LRU); Dragonfly uses --cache_mode (DASH-based eviction) since it does not expose maxmemory-policy as a CLI flag. The algorithms differ internally, which may affect eviction fairness under memory pressure."
+    "Dragonfly's small-value and pipeline cells ran the client at 75–79% CPU — the load generator was near its ceiling, so those Dragonfly numbers are a floor, not a measurement of its limit. Redis and Valkey cells ran the client at 9–16%.",
+    "The 10 KB cell moves ~2 GB/s at Dragonfly's rate, near the client instance's network ceiling — the 1.9x gap there is likely network-bound, not an engine limit.",
+    "Redis and Valkey ran their default single-threaded I/O (io-threads 1); enabling Valkey's/Redis's I/O threads is a different benchmark and is queued.",
+    "Dragonfly ran 64 proactor threads on 64 physical cores; 16 GiB maxmemory for all three; eviction flags set for parity of intent and never triggered (working sets ≤ 50% of maxmemory).",
+    "Persistence off for all three.",
+    "One host each for engine and client, same cluster placement group, RESP2, no TLS; closed-loop latency at 196 connections is measured at each engine's own saturation point.",
+    "KeyDB omitted as effectively unmaintained.",
+    "Memory is baseline-corrected RSS delta after loading 1,000,000 keys with 100-byte values; Dragonfly's per-shard tables scale with thread count, so its fixed cost differs at other thread counts."
   ],
   "runs": [
     "runs/2026-08-31-aws-graviton3.json"
