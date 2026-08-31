@@ -68,10 +68,25 @@ jobs:
         id: az
         run: |
           set -euo pipefail
-          AZ=$(aws ec2 describe-instance-type-offerings \
+          # A cluster placement group is bound to one AZ once anything has launched in it
+          # (terminated instances keep it bound for a while), so prefer that AZ.
+          PG=$(aws ec2 describe-launch-template-versions \
+            --launch-template-id "${{ steps.outputs.outputs.EngineLtId }}" --versions '$Latest' \
+            --query 'LaunchTemplateVersions[0].LaunchTemplateData.Placement.GroupName' --output text)
+          PG_AZ=$(aws ec2 describe-instances \
+            --filters "Name=placement-group-name,Values=${PG}" \
+            --query 'Reservations[].Instances[].Placement.AvailabilityZone' --output text \
+            | tr '\t' '\n' | grep -v '^$' | sort -u | head -n1 || true)
+          OFFERED=$(aws ec2 describe-instance-type-offerings \
             --location-type availability-zone \
             --filters "Name=instance-type,Values=c7g.metal" \
-            --query "InstanceTypeOfferings[0].Location" --output text)
+            --query 'InstanceTypeOfferings[].Location' --output text | tr '\t' '\n' | sort)
+          if [ -n "${PG_AZ}" ] && echo "${OFFERED}" | grep -qx "${PG_AZ}"; then
+            AZ="${PG_AZ}"
+          else
+            AZ=$(echo "${OFFERED}" | head -n1)
+          fi
+          echo "placement group ${PG} → AZ ${AZ}"
           SUBNET=$(aws ec2 describe-subnets \
             --filters "Name=availability-zone,Values=${AZ}" "Name=default-for-az,Values=true" \
             --query 'Subnets[0].SubnetId' --output text)
@@ -90,6 +105,7 @@ jobs:
             --subnet-id "${{ steps.az.outputs.subnet }}" \
             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_ID}-engine},{Key=Project,Value=$PROJECT_TAG}]" \
             --query 'Instances[0].InstanceId' --output text)
+          echo "engine_id=$ENGINE_ID" >> "$GITHUB_OUTPUT"
 
           CLIENT_ID=$(aws ec2 run-instances \
             --launch-template LaunchTemplateId=${{ steps.outputs.outputs.ClientLtId }} \
@@ -98,7 +114,6 @@ jobs:
             --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_ID}-client},{Key=Project,Value=$PROJECT_TAG}]" \
             --query 'Instances[0].InstanceId' --output text)
 
-          echo "engine_id=$ENGINE_ID" >> "$GITHUB_OUTPUT"
           echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
           echo "launched engine=$ENGINE_ID client=$CLIENT_ID"
 
