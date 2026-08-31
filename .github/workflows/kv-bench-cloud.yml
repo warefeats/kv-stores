@@ -194,6 +194,11 @@ jobs:
           SMOKE_FLAG=""
           [ "${{ inputs.matrix }}" = "smoke" ] && SMOKE_FLAG="--smoke"
 
+          # User data (docker, bun, repo clone) may still be running when SSM first reports Online.
+          for ID in "$ENGINE_ID" "$CLIENT_ID"; do
+            ssm_run "$ID" "cloud-init status --wait >/dev/null || true; command -v docker >/dev/null && test -d /opt/bench"
+          done
+
           # Log in to GHCR on client for memtier image
           ssm_run "$CLIENT_ID" \
             "echo ${GHCR_TOKEN} | docker login ghcr.io -u x --password-stdin && docker pull ghcr.io/warefeats/memtier-benchmark:2.5.1"
