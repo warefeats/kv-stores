@@ -56,6 +56,9 @@ rig-results:
         --output text)
     aws s3 ls "s3://${BUCKET}/" --recursive --human-readable
 
+rig-walk:
+    bash scripts/rig-walk.sh
+
 rig-destroy:
     cd infra && bun x cdk destroy --force
 
