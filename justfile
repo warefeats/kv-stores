@@ -4,6 +4,10 @@ default_region := "us-east-1"
 aws_account := env("AWS_ACCOUNT", "735853783919")
 aws_region := env("AWS_REGION", default_region)
 
+export AWS_DEFAULT_REGION := aws_region
+export CDK_DEFAULT_ACCOUNT := aws_account
+export CDK_DEFAULT_REGION := aws_region
+
 check:
     bun run check
 

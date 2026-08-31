@@ -54,7 +54,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ inputs.region }}
+          aws-region: ${{ inputs.region || 'us-east-1' }}
           role-duration-seconds: 7200
 
       - name: Read CDK outputs
@@ -202,7 +202,7 @@ jobs:
           done
 
       - name: Collect results
-        if: always()
+        if: always() && steps.launch.outputs.client_id != ''
         env:
           CLIENT_ID: ${{ steps.launch.outputs.client_id }}
           RUN_ID: ${{ steps.launch.outputs.run_id }}
@@ -246,7 +246,7 @@ jobs:
             "clientType": "${CLIENT_TYPE}",
             "engineThreads": ${ENGINE_THREADS},
             "ami": "${AMI}",
-            "region": "${{ inputs.region }}",
+            "region": "${{ inputs.region || 'us-east-1' }}",
             "matrix": "${{ inputs.matrix }}",
             "gitSha": "${GITHUB_SHA}",
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
