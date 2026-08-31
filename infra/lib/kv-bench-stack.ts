@@ -44,11 +44,16 @@ export class KvBenchStack extends cdk.Stack {
       "shutdown -h +120",
       "export DEBIAN_FRONTEND=noninteractive",
       "apt-get update -y",
-      "apt-get install -y docker.io docker-compose-v2 docker-buildx jq curl git awscli redis-tools",
+      "apt-get install -y docker.io docker-compose-v2 docker-buildx jq curl git unzip redis-tools",
       "systemctl enable docker && systemctl start docker",
+      // awscli apt package was removed in Ubuntu 24.04; install v2 from Amazon
+      'curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip',
+      "unzip -q /tmp/awscliv2.zip -d /tmp",
+      "/tmp/aws/install",
+      "rm -rf /tmp/awscliv2.zip /tmp/aws",
       "curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash",
       "git clone --depth 1 https://github.com/warefeats/kv-stores.git /opt/bench",
-      "cd /opt/bench && bun install --frozen-lockfile",
+      "cd /opt/bench && /usr/local/bin/bun install --frozen-lockfile",
     );
 
     const engineLt = new ec2.LaunchTemplate(this, "EngineLt", {

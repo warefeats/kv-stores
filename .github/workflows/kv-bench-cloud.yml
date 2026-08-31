@@ -168,7 +168,7 @@ jobs:
               --instance-ids "$INSTANCE" \
               --document-name AWS-RunShellScript \
               --timeout-seconds 3600 \
-              --parameters "{\"commands\":[\"set -e\n$*\"]}" \
+              --parameters "{\"commands\":[\"export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nset -e\n$*\"]}" \
               --query 'Command.CommandId' --output text)
             echo "  SSM command ${CMD_ID} on ${INSTANCE}"
             for _ in $(seq 1 360); do
@@ -240,7 +240,7 @@ jobs:
               --instance-ids "$INSTANCE" \
               --document-name AWS-RunShellScript \
               --timeout-seconds 120 \
-              --parameters "{\"commands\":[\"set -e\n$*\"]}" \
+              --parameters "{\"commands\":[\"export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nset -e\n$*\"]}" \
               --query 'Command.CommandId' --output text)
             for _ in $(seq 1 30); do
               STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE" \
