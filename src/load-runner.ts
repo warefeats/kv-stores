@@ -73,6 +73,9 @@ export function computeCpuPercent(before: CpuSample, after: CpuSample): number {
 }
 
 export function parseServerVersion(infoServer: string): string {
+  // KiviDB also reports a fixed redis_version (the Redis release it follows), so its own field comes first.
+  const kv = infoServer.match(/^kividb_version:(.+)/m);
+  if (kv) return kv[1]!.trim();
   const df = infoServer.match(/^dragonfly_version:(.+)/m);
   if (df) return df[1]!.trim();
   const vk = infoServer.match(/^valkey_version:(.+)/m);
@@ -80,6 +83,12 @@ export function parseServerVersion(infoServer: string): string {
   const rd = infoServer.match(/^redis_version:(.+)/m);
   if (rd) return rd[1]!.trim();
   return "unknown";
+}
+
+/** Thread count from KiviDB's startup banner line "  * Worker threads : N". */
+export function parseKividbWorkerThreads(logs: string): number | null {
+  const match = logs.match(/\* Worker threads\s*:\s*(\d+)/);
+  return match ? parseInt(match[1]!, 10) : null;
 }
 
 async function readProcStat(): Promise<CpuSample | null> {
@@ -295,6 +304,11 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
       const threadsMatch = infoServer.match(/^used_threads:(\d+)/m) ??
         infoServer.match(/^thread_count:(\d+)/m);
       threads = threadsMatch ? parseInt(threadsMatch[1]!, 10) : 1;
+    } else if (session.engine === "kividb") {
+      // KiviDB's INFO has no thread field, and its log is on the engine host. The cloud
+      // config sets no --threads, so record 0, KiviDB's own value for its auto default
+      // (cores - 2); the cloud workflow prints the startup banner with the resolved count.
+      threads = 0;
     }
   } else {
     const flags = fFlags(session);
@@ -313,6 +327,9 @@ export async function detectEngineConfig(session: Session): Promise<EngineConfig
       const logs = await $`docker logs ${p}-engine-1 2>&1`.text().catch(() => "");
       const ioMatch = logs.match(/Running (\d+) io threads/);
       threads = ioMatch ? parseInt(ioMatch[1]!, 10) : 4;
+    } else if (session.engine === "kividb") {
+      const logs = await $`docker logs ${p}-engine-1 2>&1`.text().catch(() => "");
+      threads = parseKividbWorkerThreads(logs) ?? 4;
     }
   }
 

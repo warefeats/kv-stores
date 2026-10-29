@@ -13,24 +13,27 @@ In-memory key-value store comparison using [memtier_benchmark](https://github.co
 | Redis | 8.10.3 | `redis:8.10.3` | Single-threaded (default `io-threads 1`) |
 | Valkey | 9.1.3 | `valkey/valkey:9.1.3` | Single-threaded (default `io-threads 1`) |
 | Dragonfly | 2.0.2 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2` | Multi-threaded (4 threads local, explicit `--proactor_threads` on cloud) |
+| KiviDB | 1.1.2 | `kividb/kividb:v1.1.2` | Multi-threaded (4 threads local, default auto = cores − 2 on cloud) |
 
 ## Fairness configuration
 
-All engines run with identical maxmemory and no persistence. Protocol is RESP2 (memtier default `redis` protocol, no HELLO), no TLS. Threading is left at defaults for Redis/Valkey — that IS the comparison (single-threaded Redis/Valkey I/O vs multi-threaded Dragonfly).
+All engines run with identical maxmemory and no persistence. Protocol is RESP2 (memtier default `redis` protocol, no HELLO), no TLS. Threading is left at defaults for Redis/Valkey — that IS the comparison (single-threaded Redis/Valkey I/O vs multi-threaded Dragonfly and KiviDB).
 
-| Setting | Redis | Valkey | Dragonfly |
-|---------|-------|--------|-----------|
-| maxmemory | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud |
-| eviction | `--maxmemory-policy allkeys-lru` | `--maxmemory-policy allkeys-lru` | `--cache_mode` (DASH-based eviction) |
-| persistence | `--save "" --appendonly no` | `--save "" --appendonly no` | `--dbfilename ""` (snapshots disabled) |
-| threading | single-threaded (default `io-threads 1`) | single-threaded (default `io-threads 1`) | 4 threads local (`--proactor_threads 4`), explicit thread count on cloud |
-| TLS | off | off | off |
-| protocol | RESP2 | RESP2 | RESP2 |
-| bind | `0.0.0.0` | `0.0.0.0` | `0.0.0.0` (default) |
+| Setting | Redis | Valkey | Dragonfly | KiviDB |
+|---------|-------|--------|-----------|--------|
+| maxmemory | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud |
+| eviction | `--maxmemory-policy allkeys-lru` | `--maxmemory-policy allkeys-lru` | `--cache_mode` (DASH-based eviction) | `--maxmemory-policy allkeys-lru` |
+| persistence | `--save "" --appendonly no` | `--save "" --appendonly no` | `--dbfilename ""` (snapshots disabled) | off by default (no AOF, no scheduled snapshots) |
+| threading | single-threaded (default `io-threads 1`) | single-threaded (default `io-threads 1`) | 4 threads local (`--proactor_threads 4`), explicit thread count on cloud | 4 threads local (`--threads 4`), default `--threads 0` (cores − 2) on cloud |
+| TLS | off | off | off | off |
+| protocol | RESP2 | RESP2 | RESP2 | RESP2 |
+| bind | `0.0.0.0` | `0.0.0.0` | `0.0.0.0` (default) | `0.0.0.0` with `--protected-mode no` |
 
 **Why `--proactor_threads 4` locally**: Dragonfly derives its thread count from the cgroup CPU quota. At 4 allocated cores it would correctly use 4 threads, but we set it explicitly for clarity. Cloud runs set `--proactor_threads` to the engine instance's full vCPU count (default 64 for c7g.metal).
 
-**Why 16 GB cloud maxmemory**: Dragonfly requires at least 256 MiB per proactor thread. At 64 threads that's 16 GiB minimum. All three engines use the same 16 GiB maxmemory on cloud for fairness (per-engine cloud overlays override the command). Local maxmemory stays 1 GiB (sufficient for 4 threads).
+**Why KiviDB runs its default thread count**: KiviDB's default, `--threads 0`, resolves to the core count minus two, which is 62 on the c7g.metal's 64 cores. Each engine runs its shipped default thread count on the same box: Dragonfly's explicit 64 equals its own default, and Redis and Valkey ship single-threaded I/O. So the cloud overlay sets no `--threads`, and the cloud workflow prints each engine's startup log, which puts the count KiviDB resolved (`Worker threads : N`) in the run's Actions log. Locally it gets `--threads 4`, the same explicit 4 as Dragonfly.
+
+**Why 16 GB cloud maxmemory**: Dragonfly requires at least 256 MiB per proactor thread. At 64 threads that's 16 GiB minimum. All four engines use the same 16 GiB maxmemory on cloud for fairness (per-engine cloud overlays override the command). Local maxmemory stays 1 GiB (sufficient for 4 threads).
 
 **Why `--cache_mode` instead of `allkeys-lru`**: Dragonfly does not expose `maxmemory-policy` as a CLI flag. `--cache_mode` enables eviction when nearing the maxmemory limit using Dragonfly's DASH-based algorithm, the closest equivalent to Redis/Valkey's sampled LRU.
 

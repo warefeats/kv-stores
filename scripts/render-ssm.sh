@@ -16,7 +16,7 @@ ENGINE_THREADS="64"
 BUCKET="test-bucket"
 GHCR_TOKEN="ghs_stub"
 RUN_ID="kv-bench-20260101-000000-1"
-ENGINES="redis valkey dragonfly"
+ENGINES="redis valkey dragonfly kividb"
 SMOKE_FLAG="--smoke"
 SSM_PATH="export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

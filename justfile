@@ -23,7 +23,7 @@ smoke:
 clean:
     #!/usr/bin/env bash
     set -euo pipefail
-    for engine in redis valkey dragonfly; do
+    for engine in redis valkey dragonfly kividb; do
         project="kv-${engine}"
         compose_file="compose/docker-compose.${engine}.yml"
         if [ -f "$compose_file" ]; then

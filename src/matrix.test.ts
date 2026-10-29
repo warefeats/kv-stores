@@ -11,14 +11,18 @@ import {
 } from "./matrix.js";
 
 describe("buildMatrix", () => {
-  test("full matrix has 12 sessions (3 engines x 4 workloads)", () => {
+  test("full matrix has 16 sessions (4 engines x 4 workloads)", () => {
     const sessions = buildMatrix(false);
-    expect(sessions).toHaveLength(12);
+    expect(sessions).toHaveLength(16);
   });
 
-  test("smoke matrix has 12 sessions (same count, different params)", () => {
+  test("smoke matrix has 16 sessions (same count, different params)", () => {
     const sessions = buildMatrix(true);
-    expect(sessions).toHaveLength(12);
+    expect(sessions).toHaveLength(16);
+  });
+
+  test("engines run in a fixed order with KiviDB last", () => {
+    expect(ENGINES).toEqual(["redis", "valkey", "dragonfly", "kividb"]);
   });
 
   test("every engine appears", () => {
@@ -57,6 +61,12 @@ describe("composeFiles", () => {
     const session = buildMatrix(false).find((s) => s.engine === "dragonfly")!;
     const files = composeFiles(session);
     expect(files).toEqual(["compose/docker-compose.dragonfly.yml"]);
+  });
+
+  test("kividb uses its own compose file", () => {
+    const session = buildMatrix(false).find((s) => s.engine === "kividb")!;
+    const files = composeFiles(session);
+    expect(files).toEqual(["compose/docker-compose.kividb.yml"]);
   });
 });
 

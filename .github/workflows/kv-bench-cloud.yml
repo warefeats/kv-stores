@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       engine_type:
-        description: "Engine to benchmark (all, redis, valkey, dragonfly)"
+        description: "Engine to benchmark (all, redis, valkey, dragonfly, kividb)"
         required: false
         default: "all"
       matrix:
@@ -195,7 +195,7 @@ jobs:
           }
 
           ENGINES="${{ inputs.engine_type }}"
-          [ "$ENGINES" = "all" ] && ENGINES="redis valkey dragonfly"
+          [ "$ENGINES" = "all" ] && ENGINES="redis valkey dragonfly kividb"
           SMOKE_FLAG=""
           [ "${{ inputs.matrix }}" = "smoke" ] && SMOKE_FLAG="--smoke"
 

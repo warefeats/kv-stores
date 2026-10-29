@@ -1,0 +1,30 @@
+services:
+  engine:
+    image: kividb/kividb:v1.1.2
+    command: >
+      --port 6379
+      --bind 0.0.0.0
+      --protected-mode no
+      --maxmemory 1073741824
+      --maxmemory-policy allkeys-lru
+      --threads 4
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 2G
+
+  client:
+    build:
+      context: ..
+      dockerfile: Dockerfile.memtier
+    depends_on:
+      engine:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 1G

@@ -1,0 +1,8 @@
+services:
+  engine:
+    command: >
+      --maxmemory 17179869184
+      --maxmemory-policy allkeys-lru
+      --port 6379
+      --bind 0.0.0.0
+      --protected-mode no

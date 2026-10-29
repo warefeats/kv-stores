@@ -83,7 +83,7 @@ docker exec "$CONTAINER" dash /tmp/gate.sh && echo "  readiness gate: PASS" || e
 
 echo ""
 echo "=== Step 3: Compose config (cloud mode) ==="
-for ENGINE in redis valkey dragonfly; do
+for ENGINE in redis valkey dragonfly kividb; do
   echo -n "  $ENGINE: "
   docker exec -w /opt/bench "$CONTAINER" bash -c "
     ENGINE_THREADS=64 docker compose \
