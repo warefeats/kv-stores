@@ -16,7 +16,8 @@
   "trademarks": [
     "Redis is a registered trademark of Redis Ltd.",
     "Valkey is a trademark of The Linux Foundation.",
-    "Dragonfly is a trademark of DragonflyDB Ltd."
+    "Dragonfly is a trademark of DragonflyDB Ltd.",
+    "KiviDB is a trademark of KIVIDB PRIVATE LIMITED."
   ],
   "limitations": [
     "Dragonfly's small-value and pipeline cells ran the client at 75–79% CPU — the load generator was near its ceiling, so those Dragonfly numbers are a floor, not a measurement of its limit. Redis and Valkey cells ran the client at 9–16%.",
@@ -32,5 +33,8 @@
     "runs/2026-08-31-aws-graviton3.json",
     "runs/2026-10-29-aws-graviton3.json",
     "runs/2026-10-29-aws-graviton3-docker-seccomp.json"
+  ],
+  "posts": [
+    "posts/2026-10-29-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb.json"
   ]
 }
