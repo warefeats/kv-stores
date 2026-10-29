@@ -178,8 +178,8 @@ const SECTION_DEFS = [
     deck: "SET/GET mix (1:10 ratio) with 100-byte values, comparing pipeline depth 1 vs 30. Candidate statistic: pipeline-30 throughput.",
     candidateWorkload: "pipeline-30",
     testWorkloads: [
-      { workload: "set-get-small", label: "Pipeline depth 1", desc: "SET/GET mix at pipeline depth 1 (reuses small-value throughput data)" },
-      { workload: "pipeline-30", label: "Pipeline depth 30", desc: "SET/GET mix at pipeline depth 30" },
+      { id: "pipeline-1", workload: "set-get-small", label: "Pipeline depth 1", desc: "SET/GET mix at pipeline depth 1 (reuses small-value throughput data)" },
+      { id: "pipeline-30", workload: "pipeline-30", label: "Pipeline depth 30", desc: "SET/GET mix at pipeline depth 30" },
     ],
     unit: "ops/s",
     lowerIsBetter: false,
@@ -188,8 +188,12 @@ const SECTION_DEFS = [
   {
     id: "memory-efficiency",
     title: "Memory efficiency",
-    deck: "Baseline-corrected memory after loading keys with 100-byte values. RSS delta is the primary metric (allocator-neutral).",
-    workload: "memory-load",
+    deck: "Baseline-corrected memory after loading 1M keys with 100-byte values into a fresh engine. RSS delta is the primary metric (allocator-neutral). Candidate statistic: memtier's default values, 100 ASCII bytes; a second load of random bytes shows what packing them is worth.",
+    candidateWorkload: "memory-load",
+    testWorkloads: [
+      { id: "ascii-values", workload: "memory-load", label: "ASCII values", desc: "1M keys with memtier's default 100-byte values, all ASCII, into a fresh engine" },
+      { id: "random-bytes", workload: "memory-load-random", label: "Random bytes", desc: "1M keys with 100-byte values of random bytes, which no engine packs, into a fresh engine" },
+    ],
     unit: "MB",
     lowerIsBetter: true,
     metricForChart: "rssDeltaMb",
@@ -317,24 +321,31 @@ function buildSections(results: RawResult[]): BenchmarkSection[] {
       );
       const winner = sorted[0]!;
 
-      const tests: BenchmarkTest[] = def.testWorkloads.map((tw) => {
-        const wlResults = results.filter((r) => r.workload === tw.workload);
-        return {
-          id: tw.workload === "set-get-small" ? "pipeline-1" : tw.workload,
-          title: tw.label,
-          description: tw.desc,
-          unit: def.unit,
-          lowerIsBetter: def.lowerIsBetter,
-          results: engines.map((e) => {
-            const er = wlResults.filter((r) => r.engine === e);
-            const value =
-              def.metricForChart === "opsPerSec"
-                ? median(er.flatMap((r) => r.samplesOpsPerSec))
-                : median(er.flatMap((r) => r.samplesP99Ms));
-            return { candidateId: e, value: round(value, 3) };
-          }),
-        };
-      });
+      // A test no result covers, such as a memory cell a run didn't load, is left out rather than charted empty.
+      const tests: BenchmarkTest[] = def.testWorkloads
+        .filter((tw) => results.some((r) => r.workload === tw.workload))
+        .map((tw) => {
+          const wlResults = results.filter((r) => r.workload === tw.workload);
+          return {
+            id: tw.id,
+            title: tw.label,
+            description: tw.desc,
+            unit: def.unit,
+            lowerIsBetter: def.lowerIsBetter,
+            results: engines
+              .filter((e) => wlResults.some((r) => r.engine === e))
+              .map((e) => {
+                const er = wlResults.filter((r) => r.engine === e);
+                const value =
+                  def.metricForChart === "opsPerSec"
+                    ? median(er.flatMap((r) => r.samplesOpsPerSec))
+                    : def.metricForChart === "rssDeltaMb"
+                      ? median(er.map((r) => r.metrics["rssDeltaMb"]?.value ?? r.engineStats.usedMemoryRssMb))
+                      : median(er.flatMap((r) => r.samplesP99Ms));
+                return { candidateId: e, value: round(value, 3) };
+              }),
+          };
+        });
 
       sections.push({
         id: def.id,

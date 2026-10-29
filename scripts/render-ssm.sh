@@ -58,6 +58,13 @@ set -e
 cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json
 SCRIPT
 
+  # --- Client run, random-bytes memory cell on a fresh engine ---
+  cat > "$OUT/04b-client-run-random-${ENGINE}.sh" <<SCRIPT
+${SSM_PATH}
+set -e
+cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json --workload=memory-load-random
+SCRIPT
+
   # --- Engine down ---
   cat > "$OUT/05-engine-down-${ENGINE}.sh" <<SCRIPT
 ${SSM_PATH}

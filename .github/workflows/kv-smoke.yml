@@ -77,8 +77,8 @@ jobs:
           FAILURE_COUNT=$(jq '.failureCount' "$RESULTS")
           echo "results: $RESULT_COUNT, failures: $FAILURE_COUNT"
 
-          if [ "$RESULT_COUNT" -lt 15 ]; then
-            echo "FAIL: expected >= 15 results, got $RESULT_COUNT"
+          if [ "$RESULT_COUNT" -lt 20 ]; then
+            echo "FAIL: expected >= 20 results (4 engines x 5 workloads), got $RESULT_COUNT"
             exit 1
           fi
 
@@ -89,31 +89,36 @@ jobs:
           fi
 
           # All throughput results must have ops/sec > 0
-          ZERO_OPS=$(jq '[.results[] | select(.workload != "memory-load") | select(.opsPerSec <= 0)] | length' "$RESULTS")
+          ZERO_OPS=$(jq '[.results[] | select(.workload | startswith("memory-load") | not) | select(.opsPerSec <= 0)] | length' "$RESULTS")
           if [ "$ZERO_OPS" -gt 0 ]; then
             echo "FAIL: $ZERO_OPS results with zero ops/sec"
             exit 1
           fi
 
           # All results must have p99 > 0
-          ZERO_P99=$(jq '[.results[] | select(.workload != "memory-load") | select(.p99Ms <= 0)] | length' "$RESULTS")
+          ZERO_P99=$(jq '[.results[] | select(.workload | startswith("memory-load") | not) | select(.p99Ms <= 0)] | length' "$RESULTS")
           if [ "$ZERO_P99" -gt 0 ]; then
             echo "FAIL: $ZERO_P99 results with zero p99"
             exit 1
           fi
 
-          # Memory workload must report key counts
-          NO_KEYS=$(jq '[.results[] | select(.workload == "memory-load") | select(.engineStats.keyCount <= 0)] | length' "$RESULTS")
+          # Both memory cells must have run for every engine, each reporting its key count
+          MEM_CELLS=$(jq '[.results[] | select(.workload | startswith("memory-load"))] | length' "$RESULTS")
+          if [ "$MEM_CELLS" -ne 8 ]; then
+            echo "FAIL: expected 8 memory cells (4 engines x ASCII and random bytes), got $MEM_CELLS"
+            exit 1
+          fi
+          NO_KEYS=$(jq '[.results[] | select(.workload | startswith("memory-load")) | select(.engineStats.keyCount <= 0)] | length' "$RESULTS")
           if [ "$NO_KEYS" -gt 0 ]; then
-            echo "FAIL: $NO_KEYS memory-load results with zero key count"
+            echo "FAIL: $NO_KEYS memory cells with zero key count"
             exit 1
           fi
 
           # GET-bearing workloads must have hit ratio >= 99%
-          LOW_HIT=$(jq '[.results[] | select(.workload != "memory-load") | select(.engineStats.hitRatio < 0.99)] | length' "$RESULTS")
+          LOW_HIT=$(jq '[.results[] | select(.workload | startswith("memory-load") | not) | select(.engineStats.hitRatio < 0.99)] | length' "$RESULTS")
           if [ "$LOW_HIT" -gt 0 ]; then
             echo "FAIL: $LOW_HIT results with hit ratio < 99%"
-            jq '[.results[] | select(.workload != "memory-load") | {label, hitRatio: .engineStats.hitRatio}]' "$RESULTS"
+            jq '[.results[] | select(.workload | startswith("memory-load") | not) | {label, hitRatio: .engineStats.hitRatio}]' "$RESULTS"
             exit 1
           fi
 
