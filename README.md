@@ -119,7 +119,7 @@ Two arm64 EC2 instances in a cluster placement group:
 
 Engine is started via compose on the engine instance (with per-engine cloud overlays for 16 GiB maxmemory). Client runs memtier directly — no compose on the client in cloud mode. Each engine starts twice: once for the matrix, and once more for the random-bytes memory cell, which needs a fresh engine; the client defers that cell when the engine has already served a workload, and the workflow runs it alone after the restart.
 
-**Cost estimate**: c7g.metal ~$2.30/hr + c7g.4xlarge ~$0.58/hr = ~$2.88/hr. Smoke run ~20 min = ~$1.00, full run ~1 hr = ~$2.90. Double-check current on-demand pricing before dispatch.
+**Cost estimate** (us-east-1 on-demand, checked 2026-10-29): c7g.metal $2.32/hr, plus the client at $0.58/hr as a c7g.4xlarge or $2.32/hr as the c7g.16xlarge the 2026-10-29 runs used, so the rig costs $2.90/hr or $4.64/hr. With the c7g.16xlarge client a smoke took about 7.5 minutes ($0.57) and a four-engine full run about 32 minutes ($2.51), before the second engine start per engine that the random-bytes memory cell adds. Double-check current on-demand pricing before dispatch.
 
 **Guardrails**: 2-hour auto-shutdown via user data, `if: always()` terminate step, reaper job (runs after every bench, terminates instances older than 3 hours), concurrency group prevents stacking.
 
