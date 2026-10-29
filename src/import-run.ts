@@ -128,22 +128,28 @@ const ENGINE_META: Record<
 > = {
   redis: {
     name: "Redis",
-    version: "8.8.2",
+    version: "8.10.3",
     logo: "/logos/redis.svg",
     color: "#DC382D",
     homepage: "https://redis.io",
   },
   valkey: {
     name: "Valkey",
-    version: "9.1.1",
+    version: "9.1.3",
     color: "#5D6DBF",
     homepage: "https://valkey.io",
   },
   dragonfly: {
     name: "Dragonfly",
-    version: "1.40.1",
+    version: "2.0.2",
     color: "#00C7B7",
     homepage: "https://www.dragonflydb.io",
+  },
+  kividb: {
+    name: "KiviDB",
+    version: "1.1.2",
+    color: "#7CB342",
+    homepage: "https://kividb.io",
   },
 };
 

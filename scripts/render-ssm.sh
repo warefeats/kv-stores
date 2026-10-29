@@ -16,7 +16,7 @@ ENGINE_THREADS="64"
 BUCKET="test-bucket"
 GHCR_TOKEN="ghs_stub"
 RUN_ID="kv-bench-20260101-000000-1"
-ENGINES="redis valkey dragonfly"
+ENGINES="redis valkey dragonfly kividb"
 SMOKE_FLAG="--smoke"
 SSM_PATH="export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
@@ -42,6 +42,13 @@ for ENGINE in $ENGINES; do
 ${SSM_PATH}
 set -e
 cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${CF} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120
+SCRIPT
+
+  # --- Engine startup log ---
+  cat > "$OUT/03b-engine-log-${ENGINE}.sh" <<SCRIPT
+${SSM_PATH}
+set -e
+cd /opt/bench && for i in \$(seq 1 60); do redis-cli -p 6379 ping 2>/dev/null | grep -q PONG && break; sleep 1; done; docker compose ${CF} -p kv-${ENGINE} logs --no-color engine | head -n 80
 SCRIPT
 
   # --- Client run ---

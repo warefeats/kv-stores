@@ -1,6 +1,6 @@
 import { cpus } from "os";
 
-export type Engine = "redis" | "valkey" | "dragonfly";
+export type Engine = "redis" | "valkey" | "dragonfly" | "kividb";
 export type Workload =
   | "set-get-small"
   | "set-get-large"
@@ -27,7 +27,7 @@ export interface WorkloadConfig {
   measuredPasses: number;
 }
 
-export const ENGINES: Engine[] = ["redis", "valkey", "dragonfly"];
+export const ENGINES: Engine[] = ["redis", "valkey", "dragonfly", "kividb"];
 export const WORKLOADS: Workload[] = [
   "set-get-small",
   "set-get-large",

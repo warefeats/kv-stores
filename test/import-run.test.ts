@@ -53,22 +53,26 @@ function makeMemoryResult(engine: string, overrides?: Partial<RawResult>): RawRe
 const SAMPLE_RESULTS: RawResults = {
   generatedAt: "2026-08-30T12:00:00.000Z",
   smoke: true,
-  sessionCount: 12,
-  resultCount: 12,
+  sessionCount: 16,
+  resultCount: 16,
   failureCount: 0,
   results: [
     makeResult("redis", "set-get-small"),
     makeResult("valkey", "set-get-small", { opsPerSec: 115000, samplesOpsPerSec: [113000, 117000], samplesP99Ms: [0.88, 0.92] }),
     makeResult("dragonfly", "set-get-small", { opsPerSec: 350000, samplesOpsPerSec: [340000, 360000], samplesP99Ms: [0.28, 0.32] }),
+    makeResult("kividb", "set-get-small", { opsPerSec: 380000, samplesOpsPerSec: [370000, 390000], samplesP99Ms: [0.24, 0.26] }),
     makeResult("redis", "set-get-large", { opsPerSec: 60000 }),
     makeResult("valkey", "set-get-large", { opsPerSec: 58000 }),
     makeResult("dragonfly", "set-get-large", { opsPerSec: 90000 }),
+    makeResult("kividb", "set-get-large", { opsPerSec: 95000 }),
     makeResult("redis", "pipeline-30", { opsPerSec: 900000, samplesOpsPerSec: [880000, 920000] }),
     makeResult("valkey", "pipeline-30", { opsPerSec: 850000, samplesOpsPerSec: [830000, 870000] }),
     makeResult("dragonfly", "pipeline-30", { opsPerSec: 2500000, samplesOpsPerSec: [2400000, 2600000] }),
+    makeResult("kividb", "pipeline-30", { opsPerSec: 2700000, samplesOpsPerSec: [2650000, 2750000] }),
     makeMemoryResult("redis"),
     makeMemoryResult("valkey", { metrics: { ...makeMemoryResult("valkey").metrics, rssDeltaMb: { value: 24.0, unit: "MB", label: "RSS (delta)" } } }),
     makeMemoryResult("dragonfly", { metrics: { ...makeMemoryResult("dragonfly").metrics, rssDeltaMb: { value: 58.5, unit: "MB", label: "RSS (delta)" } } }),
+    makeMemoryResult("kividb", { metrics: { ...makeMemoryResult("kividb").metrics, rssDeltaMb: { value: 31.0, unit: "MB", label: "RSS (delta)" } } }),
   ],
   failures: [],
 };
@@ -161,7 +165,7 @@ describe("importRun", () => {
     expect(run.sections.length).toBe(4);
   });
 
-  test("small-value section has 3 candidates", async () => {
+  test("small-value section has 4 candidates", async () => {
     await importRun(SAMPLE_RESULTS, SAMPLE_META);
 
     const run = await Bun.file(runFile).json();
@@ -169,7 +173,7 @@ describe("importRun", () => {
       (s: { id: string }) => s.id === "small-value-throughput",
     );
     expect(s1).toBeDefined();
-    expect(s1.candidates).toHaveLength(3);
+    expect(s1.candidates).toHaveLength(4);
     expect(s1.unit).toBe("ms");
     expect(s1.lowerIsBetter).toBe(true);
   });
@@ -204,6 +208,29 @@ describe("importRun", () => {
     expect(section.tests).toHaveLength(2);
     expect(section.tests[0].id).toBe("pipeline-1");
     expect(section.tests[1].id).toBe("pipeline-30");
+  });
+
+  test("KiviDB candidate carries its detected version and no logo", async () => {
+    const results: RawResults = {
+      ...SAMPLE_RESULTS,
+      results: SAMPLE_RESULTS.results.map((r) =>
+        r.engine === "kividb" && r.config
+          ? { ...r, config: { ...r.config, engineImage: "kividb/kividb:v1.1.2", serverVersion: "1.1.2", threads: 4 } }
+          : r,
+      ),
+    };
+    await importRun(results, SAMPLE_META);
+
+    const run = await Bun.file(runFile).json();
+    const s1 = run.sections.find(
+      (s: { id: string }) => s.id === "small-value-throughput",
+    );
+    const kividb = s1.candidates.find((c: { id: string }) => c.id === "kividb");
+    expect(kividb.name).toBe("KiviDB");
+    expect(kividb.version).toBe("1.1.2");
+    expect(kividb.homepage).toBe("https://kividb.io");
+    expect(kividb.logo).toBeUndefined();
+    expect(kividb.samplesMs).toEqual([0.24, 0.26]);
   });
 
   test("idempotent benchmark.json update", async () => {

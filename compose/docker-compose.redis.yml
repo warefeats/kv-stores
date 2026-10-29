@@ -1,6 +1,6 @@
 services:
   engine:
-    image: redis:8.8.2
+    image: redis:8.10.3
     command: >
       redis-server
       --maxmemory 1gb

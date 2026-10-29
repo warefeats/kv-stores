@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       engine_type:
-        description: "Engine to benchmark (all, redis, valkey, dragonfly)"
+        description: "Engine to benchmark (all, redis, valkey, dragonfly, kividb)"
         required: false
         default: "all"
       matrix:
@@ -175,6 +175,7 @@ jobs:
               --timeout-seconds 3600 \
               --parameters "{\"commands\":[\"export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nset -e\n$*\"]}" \
               --query 'Command.CommandId' --output text)
+            SSM_LAST_CMD_ID="$CMD_ID"
             echo "  SSM command ${CMD_ID} on ${INSTANCE}"
             for _ in $(seq 1 360); do
               STATUS=$(aws ssm get-command-invocation \
@@ -194,8 +195,15 @@ jobs:
             return 1
           }
 
+          # Like ssm_run, then print the command's stdout here (SSM keeps its first 24,000 characters)
+          ssm_show() {
+            ssm_run "$@" || return 1
+            aws ssm get-command-invocation --command-id "$SSM_LAST_CMD_ID" --instance-id "$1" \
+              --query 'StandardOutputContent' --output text
+          }
+
           ENGINES="${{ inputs.engine_type }}"
-          [ "$ENGINES" = "all" ] && ENGINES="redis valkey dragonfly"
+          [ "$ENGINES" = "all" ] && ENGINES="redis valkey dragonfly kividb"
           SMOKE_FLAG=""
           [ "${{ inputs.matrix }}" = "smoke" ] && SMOKE_FLAG="--smoke"
 
@@ -216,6 +224,12 @@ jobs:
             # Start engine on engine instance
             ssm_run "$ENGINE_ID" \
               "cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${COMPOSE_FILES} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120"
+
+            # Print the engine's startup log once it answers PING, so its banner (thread count, I/O model) is in this log
+            echo "--- ${ENGINE} startup log ---"
+            ssm_show "$ENGINE_ID" \
+              "cd /opt/bench && for i in \$(seq 1 60); do redis-cli -p 6379 ping 2>/dev/null | grep -q PONG && break; sleep 1; done; docker compose ${COMPOSE_FILES} -p kv-${ENGINE} logs --no-color engine | head -n 80" \
+              || echo "could not read the ${ENGINE} startup log" >&2
 
             ENGINE_IMG=$(grep -m1 '^\s*image:' compose/docker-compose.${ENGINE}.yml | awk '{print $2}')
 

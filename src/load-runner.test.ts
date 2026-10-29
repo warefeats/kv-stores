@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { parseProcStat, computeCpuPercent, parseServerVersion } from "./load-runner.js";
+import {
+  parseProcStat,
+  computeCpuPercent,
+  parseServerVersion,
+  parseKividbWorkerThreads,
+} from "./load-runner.js";
 
 describe("parseProcStat", () => {
   test("parses aggregate cpu line", () => {
@@ -80,7 +85,46 @@ describe("parseServerVersion", () => {
     expect(parseServerVersion(info)).toBe("1.40.1");
   });
 
+  test("picks kividb_version over its fixed redis_version for KiviDB", () => {
+    const info = [
+      "# Server",
+      "redis_version:8.10.0",
+      "redis_git_sha1:00000000",
+      "redis_mode:standalone",
+      "arch_bits:64",
+      "kividb_version:1.1.2",
+      "os:linux aarch64",
+    ].join("\r\n");
+    expect(parseServerVersion(info)).toBe("1.1.2");
+  });
+
   test("returns unknown for empty input", () => {
     expect(parseServerVersion("")).toBe("unknown");
+  });
+});
+
+describe("parseKividbWorkerThreads", () => {
+  test("reads the worker thread count from the startup banner", () => {
+    const logs = [
+      "  KiviDB v1.1.2 - A fast Redis\u00ae-compatible store written in Rust",
+      "  * Version        : 1.1.2",
+      "  * CPUs           : 4 cores detected",
+      "  * Listening on   : 0.0.0.0:6379",
+      "  * Worker threads : 4",
+      "  * AOF            : disabled",
+    ].join("\n");
+    expect(parseKividbWorkerThreads(logs)).toBe(4);
+  });
+
+  test("reads it through a compose logs prefix", () => {
+    expect(parseKividbWorkerThreads("engine-1  |   * Worker threads : 62")).toBe(62);
+  });
+
+  test("does not take the CPU count for the thread count", () => {
+    expect(parseKividbWorkerThreads("  * CPUs           : 64 cores detected")).toBeNull();
+  });
+
+  test("returns null when the banner is missing", () => {
+    expect(parseKividbWorkerThreads("")).toBeNull();
   });
 });
