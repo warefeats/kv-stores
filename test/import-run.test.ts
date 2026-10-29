@@ -5,99 +5,9 @@ import {
   validateMetadata,
   rigSlug,
   type RawResults,
-  type RunMetadata,
-  type RawResult,
 } from "../src/import-run.js";
 import { existsSync, unlinkSync, readFileSync, writeFileSync } from "fs";
-
-function makeResult(engine: string, workload: string, overrides?: Partial<RawResult>): RawResult {
-  return {
-    label: `${engine}/${workload}`,
-    engine,
-    workload,
-    opsPerSec: 120000,
-    p50Ms: 0.2,
-    p99Ms: 0.8,
-    p999Ms: 1.5,
-    samplesOpsPerSec: [118000, 122000],
-    samplesP99Ms: [0.75, 0.85],
-    engineStats: { rssMb: 12, usedMemoryMb: 8, usedMemoryRssMb: 12, keyCount: 100000, hitRatio: 0.999 },
-    metrics: { throughput: { value: 120000, unit: "ops/s", label: "Throughput" } },
-    config: { engineImage: "redis:8.8.2", maxmemoryBytes: 1073741824, threads: 1, memtierVersion: "2.5.1", cloudMode: false },
-    ...overrides,
-  };
-}
-
-function makeMemoryResult(engine: string, overrides?: Partial<RawResult>): RawResult {
-  return makeResult(engine, "memory-load", {
-    opsPerSec: 0,
-    p50Ms: 0,
-    p99Ms: 0,
-    p999Ms: 0,
-    samplesOpsPerSec: [0],
-    samplesP99Ms: [0],
-    engineStats: { rssMb: 25, usedMemoryMb: 18, usedMemoryRssMb: 25, keyCount: 1000000, hitRatio: 0 },
-    metrics: {
-      rssDeltaMb: { value: 23.5, unit: "MB", label: "RSS (delta)" },
-      usedMemoryDeltaMb: { value: 16.5, unit: "MB", label: "Used memory (delta)" },
-      baselineRssMb: { value: 1.5, unit: "MB", label: "Baseline RSS" },
-      baselineUsedMb: { value: 1.5, unit: "MB", label: "Baseline used memory" },
-      keyCount: { value: 1000000, unit: "keys", label: "Key count" },
-      bytesPerKeyRss: { value: 24.7, unit: "B/key", label: "Memory per key (RSS)" },
-      bytesPerKeyUsed: { value: 17.3, unit: "B/key", label: "Memory per key (used_memory)" },
-    },
-    ...overrides,
-  });
-}
-
-const SAMPLE_RESULTS: RawResults = {
-  generatedAt: "2026-08-30T12:00:00.000Z",
-  smoke: true,
-  sessionCount: 16,
-  resultCount: 16,
-  failureCount: 0,
-  results: [
-    makeResult("redis", "set-get-small"),
-    makeResult("valkey", "set-get-small", { opsPerSec: 115000, samplesOpsPerSec: [113000, 117000], samplesP99Ms: [0.88, 0.92] }),
-    makeResult("dragonfly", "set-get-small", { opsPerSec: 350000, samplesOpsPerSec: [340000, 360000], samplesP99Ms: [0.28, 0.32] }),
-    makeResult("kividb", "set-get-small", { opsPerSec: 380000, samplesOpsPerSec: [370000, 390000], samplesP99Ms: [0.24, 0.26] }),
-    makeResult("redis", "set-get-large", { opsPerSec: 60000 }),
-    makeResult("valkey", "set-get-large", { opsPerSec: 58000 }),
-    makeResult("dragonfly", "set-get-large", { opsPerSec: 90000 }),
-    makeResult("kividb", "set-get-large", { opsPerSec: 95000 }),
-    makeResult("redis", "pipeline-30", { opsPerSec: 900000, samplesOpsPerSec: [880000, 920000] }),
-    makeResult("valkey", "pipeline-30", { opsPerSec: 850000, samplesOpsPerSec: [830000, 870000] }),
-    makeResult("dragonfly", "pipeline-30", { opsPerSec: 2500000, samplesOpsPerSec: [2400000, 2600000] }),
-    makeResult("kividb", "pipeline-30", { opsPerSec: 2700000, samplesOpsPerSec: [2650000, 2750000] }),
-    makeMemoryResult("redis"),
-    makeMemoryResult("valkey", { metrics: { ...makeMemoryResult("valkey").metrics, rssDeltaMb: { value: 24.0, unit: "MB", label: "RSS (delta)" } } }),
-    makeMemoryResult("dragonfly", { metrics: { ...makeMemoryResult("dragonfly").metrics, rssDeltaMb: { value: 58.5, unit: "MB", label: "RSS (delta)" } } }),
-    makeMemoryResult("kividb", { metrics: { ...makeMemoryResult("kividb").metrics, rssDeltaMb: { value: 31.0, unit: "MB", label: "RSS (delta)" } } }),
-  ],
-  failures: [],
-};
-
-const SAMPLE_META: RunMetadata = {
-  id: "",
-  label: "M2 Max (local)",
-  publishedAt: "2026-08-30",
-  environment: {
-    machine: "Apple Mac Studio",
-    chip: "Apple M2 Max",
-    cores: "12 CPU cores",
-    memory: "96 GB",
-    os: "macOS (Docker via OrbStack)",
-    arch: "arm64",
-    runtime: "Docker Compose",
-  },
-  protocol: {
-    warmups: 1,
-    runs: 2,
-    processModel: "container-per-engine",
-    cacheState: "n/a",
-    output: "memtier_benchmark JSON (RESP2, no TLS)",
-  },
-};
+import { SAMPLE_META, SAMPLE_RESULTS } from "./fixtures.js";
 
 describe("validateResults", () => {
   test("accepts valid results", () => {
@@ -190,6 +100,16 @@ describe("importRun", () => {
     expect(s4.lowerIsBetter).toBe(true);
     const redisCandidate = s4.candidates.find((c: { id: string }) => c.id === "redis");
     expect(redisCandidate.samplesMs[0]).toBe(23.5);
+
+    // One load per engine: a single reading, declared as its own mean. The fixture has no random-bytes cell.
+    expect(s4.tests.map((t: { id: string }) => t.id)).toEqual(["ascii-values"]);
+    const ascii = s4.tests[0];
+    expect(ascii.statistic).toBe("mean");
+    expect(ascii.results.find((r: { candidateId: string }) => r.candidateId === "redis")).toEqual({
+      candidateId: "redis",
+      value: 23.5,
+      samples: [23.5],
+    });
   });
 
   test("pipeline section uses pipeline-30 for candidate statistic", async () => {
@@ -208,6 +128,36 @@ describe("importRun", () => {
     expect(section.tests).toHaveLength(2);
     expect(section.tests[0].id).toBe("pipeline-1");
     expect(section.tests[1].id).toBe("pipeline-30");
+  });
+
+  test("pipeline tests carry the per-pass throughput their median is taken over", async () => {
+    await importRun(SAMPLE_RESULTS, SAMPLE_META);
+
+    const run = await Bun.file(runFile).json();
+    const section = run.sections.find(
+      (s: { id: string }) => s.id === "pipeline-effect",
+    );
+    const [depth1, depth30] = section.tests;
+
+    // pipeline-1 reuses the set-get-small rows; pipeline-30 reads its own cell.
+    expect(depth1.statistic).toBe("median");
+    expect(depth1.results).toEqual([
+      { candidateId: "redis", value: 120000, samples: [118000, 122000] },
+      { candidateId: "valkey", value: 115000, samples: [113000, 117000] },
+      { candidateId: "dragonfly", value: 350000, samples: [340000, 360000] },
+      { candidateId: "kividb", value: 380000, samples: [370000, 390000] },
+    ]);
+    expect(depth30.statistic).toBe("median");
+    expect(depth30.results).toEqual([
+      { candidateId: "redis", value: 900000, samples: [880000, 920000] },
+      { candidateId: "valkey", value: 850000, samples: [830000, 870000] },
+      { candidateId: "dragonfly", value: 2500000, samples: [2400000, 2600000] },
+      { candidateId: "kividb", value: 2700000, samples: [2650000, 2750000] },
+    ]);
+
+    // The serialization order the site reads: statistic after results, samples after value.
+    expect(Object.keys(depth30)).toEqual(["id", "title", "description", "unit", "lowerIsBetter", "results", "statistic"]);
+    expect(Object.keys(depth30.results[0])).toEqual(["candidateId", "value", "samples"]);
   });
 
   test("KiviDB candidate carries its detected version and no logo", async () => {
