@@ -29,8 +29,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Dragonfly 1.41M ops/s at the lowest p99 (0.45 ms); KiviDB 1.46M (0.46 ms), the most ops/s on every pass; Redis 182K (2.03 ms); Valkey 180K (2.04 ms)",
+        "summary": "SET/GET mix (1:10) at pipeline depth 1 with 100-byte values, 200 connections. The section ranks on p99, and Dragonfly's median was 16 µs lower than KiviDB's, inside both engines' range across passes (0.407 to 0.511 ms and 0.423 to 0.535 ms). KiviDB's throughput lead is outside its range: its slowest pass, 1.44M ops/s, beat Dragonfly's fastest, 1.41M. Redis and Valkey were within 1% of each other at about an eighth of that throughput, and client CPU stayed under 40% on every pass."
       },
       "candidates": [
         {
@@ -172,8 +172,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Dragonfly 398K ops/s at the lowest p99 (0.91 ms); KiviDB 398K (0.95 ms), both at the network ceiling; Valkey 108K (3.49 ms); Redis 107K (3.52 ms)",
+        "summary": "SET/GET mix (1:10) at pipeline depth 1 with 10 KB values, 200 connections. Dragonfly and KiviDB delivered 397,525 and 397,526 ops/s, 29.6 Gbit/s of values into the client against the instances' 30 Gbit/s rating, so this section can't separate them. Their p99s swung by more than half the median between passes (0.799 to 1.335 ms and 0.775 to 1.279 ms), and the 40 µs between the medians is well inside that. Both ran 3.7 times the throughput of Redis and Valkey at about a quarter of their p99, and Redis and Valkey were within 1% of each other."
       },
       "candidates": [
         {
@@ -315,8 +315,8 @@
       "lowerIsBetter": false,
       "verdict": {
         "winnerId": "kividb",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "KiviDB 22.2M ops/s at pipeline 30, a floor with the client at 69% CPU; Dragonfly 16.7M; Redis 1.48M; Valkey 1.37M",
+        "summary": "SET/GET mix (1:10) with 100-byte values at pipeline depth 30, 200 connections. KiviDB's slowest pass, 21.5M ops/s, beat Dragonfly's fastest, 16.8M, and its median led by 33%. That number is a floor: the client averaged 69% CPU in KiviDB's cell (66 to 70% per pass), 50 memtier threads can keep at most 50 of its 64 vCPUs busy, and KiviDB's passes got slower as client CPU rose (r = −0.95 over ten passes). Dragonfly's cell ran the client at 34% with no such pattern. Pipelining raised throughput 15.2 times for KiviDB, 11.9 for Dragonfly, 8.2 for Redis and 7.6 for Valkey, and Redis led Valkey by 8%."
       },
       "candidates": [
         {
@@ -570,8 +570,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Dragonfly 112.5 MB RSS delta (118 B/key); Redis 157.5 MB (165 B/key); Valkey 162.5 MB (170 B/key); KiviDB 254.9 MB (267 B/key)",
+        "summary": "1,000,000 keys with 100-byte values loaded into a fresh engine; the statistic is the used_memory_rss delta over the empty engine's baseline. Dragonfly used 29% less than Redis and 31% less than Valkey, and KiviDB used 2.3 times Dragonfly's memory and 1.6 times Redis's. The delta leaves out each engine's idle RSS, which was 111.6 MB for Dragonfly against 11.7 to 24.1 MB for the other three."
       },
       "candidates": [
         {

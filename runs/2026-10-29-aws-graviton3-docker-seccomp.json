@@ -29,8 +29,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "kividb",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Docker's default seccomp profile, io_uring blocked: KiviDB 975K ops/s at the lowest p99 (0.37 ms), 33% below its io_uring run; Dragonfly 1.40M (0.45 ms); Redis 175K (2.11 ms); Valkey 171K (2.16 ms)",
+        "summary": "This run kept Docker's default seccomp profile, which blocks io_uring, so Dragonfly fell back to epoll and KiviDB to tokio; the other 2026-10-29 run allows io_uring. KiviDB served 33% fewer ops/s than in that run, and Dragonfly served 44% more than KiviDB here, while KiviDB's p99 was the lowest, 0.359 to 0.375 ms across passes. Dragonfly's throughput came within 0.3% of its io_uring run. Redis and Valkey have no io_uring code path; they ran 3.5% and 5.0% slower than in the io_uring run, on a different pair of instances."
       },
       "candidates": [
         {
@@ -172,8 +172,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Docker's default seccomp profile, io_uring blocked: Dragonfly 398K ops/s at the lowest p99 (0.81 ms); KiviDB 398K (1.04 ms), both at the network ceiling; Redis 105K (3.58 ms); Valkey 102K (3.71 ms)",
+        "summary": "Docker's default seccomp profile, io_uring blocked. Dragonfly and KiviDB delivered 397,518 and 397,516 ops/s, the same network ceiling as in the io_uring run, so throughput can't separate them, and their p99 ranges across passes overlap (0.767 to 1.087 ms and 0.783 to 1.143 ms). Redis led Valkey by 3.0% on throughput; Valkey's passes spread 5.4%, the widest of any Redis or Valkey cell in either 2026-10-29 run."
       },
       "candidates": [
         {
@@ -315,8 +315,8 @@
       "lowerIsBetter": false,
       "verdict": {
         "winnerId": "kividb",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Docker's default seccomp profile, io_uring blocked: KiviDB 20.3M ops/s at pipeline 30, with the client at 54% CPU; Dragonfly 16.6M; Redis 1.48M; Valkey 1.35M",
+        "summary": "Docker's default seccomp profile, io_uring blocked. KiviDB on tokio still led Dragonfly on epoll by 22%, and its slowest pass, 19.7M ops/s, beat Dragonfly's fastest, 16.7M. KiviDB's passes again got slower as client CPU rose (r = −0.98 over ten passes). Against the io_uring run, KiviDB lost 8.7% here and Dragonfly 0.6%, which is inside the 0.3 to 1.5% that Redis and Valkey differed by between the two instance pairs."
       },
       "candidates": [
         {
@@ -570,8 +570,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "TODO",
-        "summary": "TODO"
+        "headline": "Dragonfly 113.6 MB RSS delta (119 B/key); Redis 158.0 MB (166 B/key); Valkey 162.0 MB (170 B/key); KiviDB 254.5 MB (267 B/key)",
+        "summary": "1,000,000 keys with 100-byte values loaded into a fresh engine; the statistic is the used_memory_rss delta over the empty engine's baseline. Every engine came within about 1% per key of its io_uring run. Dragonfly used 28% less than Redis and 30% less than Valkey, and KiviDB used 2.2 times Dragonfly's memory."
       },
       "candidates": [
         {
