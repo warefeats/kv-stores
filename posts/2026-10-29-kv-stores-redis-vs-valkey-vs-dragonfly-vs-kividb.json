@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "slug": "2026-10-29-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb",
+  "publishedAt": "2026-10-29",
+  "run": "2026-10-29-aws-graviton3",
+  "candidates": [
+    "redis",
+    "valkey",
+    "dragonfly",
+    "kividb"
+  ],
+  "title": "Redis vs Valkey vs Dragonfly vs KiviDB",
+  "deck": "Redis 8.10, Valkey 9.1, Dragonfly 2.0 and KiviDB 1.1 on a 64-core Graviton3: SET/GET at 100 bytes and 10 KB, pipelining, and memory per key, with io_uring allowed through Docker's seccomp profile. One of KiviDB's founders asked for this run and agreed we'd publish whatever came out.",
+  "verdict": {
+    "winnerId": "dragonfly",
+    "headline": "Dragonfly took the p99 and memory sections, KiviDB took pipelining by 33% and out-served it on small values in every pass, and the two tied at 10 KB on the network ceiling",
+    "summary": "KiviDB 1.1.2 ran its default 62 worker threads and Dragonfly 2.0.2 its default 64, both on io_uring. On 100-byte SET/GET, KiviDB's slowest pass (1.44M ops/s) beat Dragonfly's fastest (1.41M); Dragonfly's p99 was lower, 0.45 ms to 0.46, by less than either engine's spread between passes. At pipeline depth 30 KiviDB did 22.2M ops/s to Dragonfly's 16.7M, and that's a floor: the client sat at 66 to 70% CPU and KiviDB's passes slowed as it climbed. At 10 KB both did 398K ops/s, 29.6 Gbit/s against the instances' 30 Gbit/s rating, a tie. Memory went to Dragonfly: 118 bytes of RSS per key to KiviDB's 267, Redis's 165 and Valkey's 170. Redis 8.10.3 and Valkey 9.1.3 stayed within 1% of each other everywhere but pipeline 30, where Redis led by 8%. A second run under Docker's stock seccomp profile, which blocks io_uring, cost KiviDB 33% of its small-value throughput and Dragonfly nothing measurable. Medians of ten passes; the table shows means."
+  },
+  "sections": {
+    "small-value-throughput": "Dragonfly 1.41M ops/s at the lowest p99 (0.45 ms); KiviDB 1.46M (0.46 ms), the most ops/s on every pass; Redis 182K (2.03 ms); Valkey 180K (2.04 ms)",
+    "large-value-throughput": "Dragonfly 398K ops/s at the lowest p99 (0.91 ms); KiviDB 398K (0.95 ms), both at the network ceiling; Valkey 108K (3.49 ms); Redis 107K (3.52 ms)",
+    "pipeline-effect": "KiviDB 22.2M ops/s at pipeline 30, a floor with the client at 69% CPU; Dragonfly 16.7M; Redis 1.48M; Valkey 1.37M",
+    "memory-efficiency": "Dragonfly 112.5 MB RSS delta (118 B/key); Redis 157.5 MB (165 B/key); Valkey 162.5 MB (170 B/key); KiviDB 254.9 MB (267 B/key)"
+  },
+  "limitations": [
+    "KiviDB's pipeline-30 cell ran the client at 66 to 70% CPU, where 50 memtier threads can keep at most 50 of its 64 vCPUs busy, and KiviDB's passes got slower as client CPU rose, so its 22.2M ops/s is a floor.",
+    "At 10 KB, Dragonfly and KiviDB both delivered 398K ops/s, which is 29.6 Gbit/s of values into the client against the instances' 30 Gbit/s rating, so that section measures the network and can't separate them.",
+    "Latency is closed-loop at 200 connections and measured at the client, so each engine's p99 comes at its own throughput. Between passes, p99 swung by 23 to 59% of its median in Dragonfly's and KiviDB's small- and large-value cells, far more than the gaps between them.",
+    "Docker's default seccomp profile blocks io_uring, so this run allowed io_uring_setup, io_uring_enter and io_uring_register on top of it. In the second 2026-10-29 run, under the stock profile, Dragonfly fell back to epoll with no measurable change, while KiviDB fell back to tokio and lost 33% of its small-value throughput and 9% at pipeline 30.",
+    "The two 2026-10-29 runs used different instance pairs, and Redis and Valkey, which have no io_uring code path, differed by up to 5.3% between them, so a gap under about 5% between the runs can't be put down to the seccomp profile.",
+    "These numbers don't compare with the 2026-08-31 post's: the client is now a c7g.16xlarge at 200 connections instead of a c7g.4xlarge at 196, io_uring is allowed through seccomp, and every engine is a newer release. That post's Dragonfly most likely ran on epoll too, since it used the same AMI and Docker's default profile, but no startup log was kept to show it either way.",
+    "Dragonfly ran 64 proactor threads, its default on 64 cores, and KiviDB its default 62 worker threads (cores minus two), both read from their startup logs. Redis and Valkey ran their default single-threaded I/O (io-threads 1); turning on their I/O threads is a different benchmark.",
+    "Persistence was off for all four. For KiviDB that's its default: no AOF, and snapshots only on an explicit SAVE or BGSAVE.",
+    "The official Redis 8.10.3 image loads its bundled Search, JSON, TimeSeries and Bloom modules, and they were left on as shipped; they add about 12 MB of baseline RSS over Valkey and don't affect GET or SET.",
+    "Memory is the baseline-corrected used_memory_rss delta after loading 1,000,000 keys with 100-byte values into a fresh engine: 267 B per key for KiviDB, 118 for Dragonfly, 165 for Redis and 170 for Valkey. Dragonfly's per-shard tables scale with its thread count, so its fixed cost differs at other thread counts.",
+    "The rig was one c7g.metal engine host and one c7g.16xlarge client in a single cluster placement group in us-east-1, speaking RESP2 without TLS. maxmemory was 16 GiB for all four, and eviction never triggered: working sets stay at or below half of it.",
+    "KiviDB checks GitHub for a newer release at startup, before it listens; that was left on, as shipped."
+  ]
+}
