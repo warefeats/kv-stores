@@ -1,10 +1,11 @@
-# Redis vs Valkey vs Dragonfly — KV store benchmark
+# KV store benchmark: Redis vs Valkey vs Dragonfly vs KiviDB
 
 In-memory key-value store comparison using [memtier_benchmark](https://github.com/RedisLabs/memtier_benchmark). Part of the [warefeats](https://warefeats.com) benchmark suite.
 
-## Published run
+## Published runs
 
-- **2026-08-31** — AWS Graviton3 cloud rig (c7g.metal engine + c7g.4xlarge client, cluster placement group). Full run: 2 warmups, 10 measured passes per engine per workload. See [`runs/2026-08-31-aws-graviton3.json`](runs/2026-08-31-aws-graviton3.json).
+- 2026-08-31: AWS Graviton3 cloud rig (c7g.metal engine + c7g.4xlarge client, cluster placement group) with Redis, Valkey and Dragonfly. Full run: 2 warmups, 10 measured passes per engine per workload. See [`runs/2026-08-31-aws-graviton3.json`](runs/2026-08-31-aws-graviton3.json) and [the post](https://warefeats.com/posts/2026-08-31-kv-stores-redis-vs-valkey-vs-dragonfly/).
+- 2026-10-29: AWS Graviton3 cloud rig (c7g.metal engine + c7g.16xlarge client, cluster placement group) with KiviDB as a fourth engine. Two full runs, each 2 warmups and 10 measured passes per engine per workload: [`runs/2026-10-29-aws-graviton3.json`](runs/2026-10-29-aws-graviton3.json) allows io_uring through seccomp and is the run [the post](https://warefeats.com/posts/2026-10-29-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb/) draws, and [`runs/2026-10-29-aws-graviton3-docker-seccomp.json`](runs/2026-10-29-aws-graviton3-docker-seccomp.json) keeps Docker's default seccomp profile, which blocks it.
 
 ## Engines
 
@@ -12,8 +13,8 @@ In-memory key-value store comparison using [memtier_benchmark](https://github.co
 |--------|---------|-------|-----------|
 | Redis | 8.10.3 | `redis:8.10.3` | Single-threaded (default `io-threads 1`) |
 | Valkey | 9.1.3 | `valkey/valkey:9.1.3` | Single-threaded (default `io-threads 1`) |
-| Dragonfly | 2.0.2 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2` | Multi-threaded (4 threads local, explicit `--proactor_threads` on cloud) |
-| KiviDB | 1.1.2 | `kividb/kividb:v1.1.2` | Multi-threaded (4 threads local, default auto = cores − 2 on cloud) |
+| Dragonfly | 2.0.2 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2` | Multi-threaded (4 threads local, 64 on cloud via `--proactor_threads 64`) |
+| KiviDB | 1.1.2 | `kividb/kividb:v1.1.2` | Multi-threaded (4 threads local, its default of cores − 2 on cloud: 62 on the c7g.metal) |
 
 ## Fairness configuration
 
@@ -24,7 +25,7 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 | maxmemory | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud | 1 GB local / 16 GB cloud |
 | eviction | `--maxmemory-policy allkeys-lru` | `--maxmemory-policy allkeys-lru` | `--cache_mode` (DASH-based eviction) | `--maxmemory-policy allkeys-lru` |
 | persistence | `--save "" --appendonly no` | `--save "" --appendonly no` | `--dbfilename ""` (snapshots disabled) | off by default (no AOF, no scheduled snapshots) |
-| threading | single-threaded (default `io-threads 1`) | single-threaded (default `io-threads 1`) | 4 threads local (`--proactor_threads 4`), explicit thread count on cloud | 4 threads local (`--threads 4`), default `--threads 0` (cores − 2) on cloud |
+| threading | single-threaded (default `io-threads 1`) | single-threaded (default `io-threads 1`) | 4 threads local (`--proactor_threads 4`), 64 on cloud (`--proactor_threads 64`, its default on 64 cores) | 4 threads local (`--threads 4`), 62 on cloud (default `--threads 0`, cores − 2) |
 | TLS | off | off | off | off |
 | protocol | RESP2 | RESP2 | RESP2 | RESP2 |
 | bind | `0.0.0.0` | `0.0.0.0` | `0.0.0.0` (default) | `0.0.0.0` with `--protected-mode no` |
@@ -54,10 +55,12 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 | Local full | 4 | 50 | 200 |
 | Cloud smoke (c7g.4xlarge, 16 vCPU) | 14 | 1 | 14 |
 | Cloud full (c7g.4xlarge, 16 vCPU) | 14 | 14 | 196 |
+| Cloud smoke, 2026-10-29 (c7g.16xlarge, 64 vCPU, `MEMTIER_THREADS=50`) | 50 | 1 | 50 |
+| Cloud full, 2026-10-29 (c7g.16xlarge, 64 vCPU, `MEMTIER_THREADS=50`) | 50 | 4 | 200 |
 
 **Distinct client seed**: Every memtier invocation uses `--distinct-client-seed` so parallel clients access different keys, avoiding artificial hot-key contention.
 
-**Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of both `used_memory` and cgroup RSS is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral).
+**Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of INFO `used_memory` and `used_memory_rss` (the engine's process RSS) is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral).
 
 ## Workloads
 
@@ -111,7 +114,7 @@ Two arm64 EC2 instances in a cluster placement group:
 | Role | Instance | Purpose |
 |------|----------|---------|
 | Engine | c7g.metal | Runs the KV store container with `network_mode: host`, no resource limits |
-| Client | c7g.4xlarge (configurable) | Runs memtier_benchmark via `docker run --network host` against engine IP |
+| Client | c7g.4xlarge by default (configurable; the 2026-10-29 runs used c7g.16xlarge) | Runs memtier_benchmark via `docker run --network host` against engine IP |
 
 Engine is started via compose on the engine instance (with per-engine cloud overlays for 16 GiB maxmemory). Client runs memtier directly — no compose on the client in cloud mode.
 
