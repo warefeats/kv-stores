@@ -1,6 +1,11 @@
 services:
   engine:
     network_mode: host
+    # Docker's default seccomp profile plus the three io_uring syscalls; see the README's fairness section
+    security_opt:
+      - seccomp=./seccomp-io-uring.json
+    ulimits:
+      memlock: -1
     deploy:
       resources:
         limits:
