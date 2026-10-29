@@ -82,13 +82,24 @@ export interface Candidate {
   metrics?: Record<string, { value: number; unit: string; label?: string }>;
 }
 
+/** How a test's `value` summarizes each candidate's samples. "other": a value the site cannot recompute from the per-pass numbers; the test's description says what it is. */
+export type TestStatistic = "mean" | "median" | "min" | "max" | "other";
+
+export interface TestResult {
+  candidateId: string;
+  value: number;
+  /** One measurement per measured pass, in the test's unit and in pass order: the array `value` was computed from, as the raw holds it. */
+  samples?: number[];
+}
+
 export interface BenchmarkTest {
   id: string;
   title: string;
   description: string;
   unit: string;
   lowerIsBetter: boolean;
-  results: { candidateId: string; value: number }[];
+  results: TestResult[];
+  statistic?: TestStatistic;
 }
 
 export interface BenchmarkSection {
@@ -247,6 +258,11 @@ function round(n: number, d: number): number {
   return Math.round(n * f) / f;
 }
 
+/** A test result, with `samples` only when the test carries them, so the keys serialize as candidateId, value, samples. */
+function row(candidateId: string, value: number, samples?: number[]): TestResult {
+  return samples ? { candidateId, value, samples } : { candidateId, value };
+}
+
 function buildCandidate(
   engine: string,
   results: RawResult[],
@@ -299,7 +315,7 @@ function median(arr: number[]): number {
     : sorted[mid]!;
 }
 
-function buildSections(results: RawResult[]): BenchmarkSection[] {
+export function buildSections(results: RawResult[]): BenchmarkSection[] {
   const sections: BenchmarkSection[] = [];
 
   for (const def of SECTION_DEFS) {
@@ -326,24 +342,29 @@ function buildSections(results: RawResult[]): BenchmarkSection[] {
         .filter((tw) => results.some((r) => r.workload === tw.workload))
         .map((tw) => {
           const wlResults = results.filter((r) => r.workload === tw.workload);
+          const rows = engines
+            .filter((e) => wlResults.some((r) => r.engine === e))
+            .map((e) => {
+              const er = wlResults.filter((r) => r.engine === e);
+              // One number per measured pass, as the raw holds it: the array the test's value is the median of.
+              const samples =
+                def.metricForChart === "opsPerSec"
+                  ? er.flatMap((r) => r.samplesOpsPerSec)
+                  : def.metricForChart === "rssDeltaMb"
+                    ? er.map((r) => r.metrics["rssDeltaMb"]?.value ?? r.engineStats.usedMemoryRssMb)
+                    : er.flatMap((r) => r.samplesP99Ms);
+              return { candidateId: e, value: round(median(samples), 3), samples };
+            });
+          // A single reading, such as a memory cell's one load, is its own mean and is declared as one.
+          const statistic: TestStatistic = rows.every((r) => r.samples.length === 1) ? "mean" : "median";
           return {
             id: tw.id,
             title: tw.label,
             description: tw.desc,
             unit: def.unit,
             lowerIsBetter: def.lowerIsBetter,
-            results: engines
-              .filter((e) => wlResults.some((r) => r.engine === e))
-              .map((e) => {
-                const er = wlResults.filter((r) => r.engine === e);
-                const value =
-                  def.metricForChart === "opsPerSec"
-                    ? median(er.flatMap((r) => r.samplesOpsPerSec))
-                    : def.metricForChart === "rssDeltaMb"
-                      ? median(er.map((r) => r.metrics["rssDeltaMb"]?.value ?? r.engineStats.usedMemoryRssMb))
-                      : median(er.flatMap((r) => r.samplesP99Ms));
-                return { candidateId: e, value: round(value, 3) };
-              }),
+            results: rows.map((r) => row(r.candidateId, r.value, r.samples)),
+            statistic,
           };
         });
 

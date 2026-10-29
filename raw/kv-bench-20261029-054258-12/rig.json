@@ -1,0 +1,11 @@
+{
+  "runId": "kv-bench-20261029-054258-12",
+  "engineType": "c7g.metal",
+  "clientType": "c7g.16xlarge",
+  "engineThreads": 64,
+  "ami": "ami-06f318091abc639be",
+  "region": "us-east-1",
+  "matrix": "full",
+  "gitSha": "a02f030731eea4ac754712fe09ae537048b1682a",
+  "timestamp": "2026-10-29T06:15:02Z"
+}

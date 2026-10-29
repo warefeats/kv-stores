@@ -13,3 +13,4 @@ AGENTS.md
 cdk.out/
 infra-outputs.json
 results.json
+!raw/**/results.json

@@ -8,6 +8,7 @@
   "deck": "In-memory SET/GET throughput, pipelining, and memory efficiency — Redis 8 vs Valkey 9 vs Dragonfly 1.40 on dedicated ARM hardware.",
   "unit": "ms",
   "lowerIsBetter": true,
+  "sectionSamples": "repeats",
   "verdict": {
     "winnerId": "dragonfly",
     "headline": "Dragonfly led every section; Redis and Valkey tracked within a few percent of each other",
