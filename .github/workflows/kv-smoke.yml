@@ -3,13 +3,33 @@ name: KV smoke test
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "src/**"
-      - "compose/**"
-      - "Dockerfile.memtier"
 
 jobs:
+  # The smoke is a required check on main. It covers the runner, its compose files, the memtier image and this
+  # workflow, so a PR that touches none of them skips it, and a skipped required check counts as passed: doc and
+  # data PRs still merge, and a runner PR can't merge before the smoke has run and passed.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      runner: ${{ steps.files.outputs.runner }}
+    steps:
+      - name: List the PR's files
+        id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename')
+          if printf '%s\n' "$FILES" | grep -qE '^(src/|compose/|Dockerfile\.memtier$|\.github/workflows/kv-smoke\.yml$)'; then
+            echo "runner=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "runner=false" >> "$GITHUB_OUTPUT"
+            echo "no runner file changed; the smoke is skipped"
+          fi
+
   smoke:
+    needs: changes
+    if: needs.changes.outputs.runner == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
 
