@@ -5,7 +5,8 @@ export type Workload =
   | "set-get-small"
   | "set-get-large"
   | "pipeline-30"
-  | "memory-load";
+  | "memory-load"
+  | "memory-load-random";
 
 export interface Session {
   engine: Engine;
@@ -23,6 +24,8 @@ export interface WorkloadConfig {
   requests: number;
   keyPattern: string;
   keyMax: number;
+  /** memtier --random-data: values of random bytes instead of its default fill, 100 ASCII bytes. */
+  randomData: boolean;
   warmupPasses: number;
   measuredPasses: number;
 }
@@ -33,7 +36,18 @@ export const WORKLOADS: Workload[] = [
   "set-get-large",
   "pipeline-30",
   "memory-load",
+  "memory-load-random",
 ];
+
+/**
+ * The memory cells: one load of keys into an engine that has served nothing since it started, measured as a
+ * baseline-corrected delta. RSS doesn't return to its baseline after FLUSHALL, so each needs a fresh engine.
+ */
+export type MemoryWorkload = "memory-load" | "memory-load-random";
+
+export function isMemoryWorkload(workload: Workload): workload is MemoryWorkload {
+  return workload === "memory-load" || workload === "memory-load-random";
+}
 
 const smokeMode = process.argv.includes("--smoke");
 const isCloud = process.env.CLOUD_MODE === "1";
@@ -66,7 +80,7 @@ export function workloadConfig(
   workload: Workload,
   smoke: boolean = smokeMode,
 ): WorkloadConfig {
-  if (workload === "memory-load") {
+  if (isMemoryWorkload(workload)) {
     return {
       ratio: "1:0",
       dataSize: 100,
@@ -77,12 +91,14 @@ export function workloadConfig(
       requests: smoke ? 100_000 : 1_000_000,
       keyPattern: "P:P",
       keyMax: smoke ? 100_000 : 1_000_000,
+      randomData: workload === "memory-load-random",
       warmupPasses: 0,
       measuredPasses: 1,
     };
   }
 
   const base = {
+    randomData: false,
     warmupPasses: smoke ? 1 : 2,
     measuredPasses: smoke ? 2 : 10,
   };

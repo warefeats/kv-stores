@@ -46,7 +46,7 @@ export interface EngineConfig {
   cloudMode: boolean;
 }
 
-const isCloud = process.env.CLOUD_MODE === "1";
+export const isCloud = process.env.CLOUD_MODE === "1";
 const engineHost = process.env.ENGINE_HOST || "engine";
 const memtierImage = process.env.MEMTIER_IMAGE || "ghcr.io/warefeats/memtier-benchmark:2.5.1";
 
@@ -207,6 +207,10 @@ export async function runMemtierPass(
     "--distinct-client-seed",
     "--hide-histogram",
   ];
+
+  if (config.randomData) {
+    memtierArgs.push("--random-data");
+  }
 
   if (config.testTime > 0) {
     memtierArgs.push(`--test-time=${config.testTime}`);
@@ -426,9 +430,9 @@ export async function runThroughputWorkload(
 export async function runMemoryWorkload(
   session: Session,
 ): Promise<CellResult> {
-  const config = workloadConfig("memory-load");
+  const config = workloadConfig(session.workload);
   const cFiles = composeFiles(session);
-  console.log(`  workload: memory-load (${config.keyMax} keys × ${config.dataSize}B)`);
+  console.log(`  workload: ${session.workload} (${config.keyMax} keys × ${config.dataSize}B${config.randomData ? ", random bytes" : ""})`);
 
   await flushDb(session);
 
@@ -462,7 +466,7 @@ export async function runMemoryWorkload(
   return {
     label: session.label,
     engine: session.engine,
-    workload: "memory-load",
+    workload: session.workload,
     opsPerSec: 0,
     p50Ms: 0,
     p99Ms: 0,

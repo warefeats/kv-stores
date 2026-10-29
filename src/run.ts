@@ -1,8 +1,9 @@
-import { type Session, type Engine, buildMatrix } from "./matrix.js";
+import { type Session, type Engine, buildMatrix, isMemoryWorkload } from "./matrix.js";
 import {
   type CellResult,
   composeUp,
   composeDown,
+  isCloud,
   runThroughputWorkload,
   runMemoryWorkload,
 } from "./load-runner.js";
@@ -49,6 +50,7 @@ for (const engine of engines) {
         "set-get-small",
         "set-get-large",
         "pipeline-30",
+        "memory-load-random",
       ];
       return order.indexOf(a.workload) - order.indexOf(b.workload);
     });
@@ -91,17 +93,30 @@ for (const [engine, cycleSessions] of cycleMap) {
   try {
     await composeUp(anchor);
 
+    // Workloads this engine has served since it started: a memory cell's baseline needs none.
+    let served = 0;
     for (const session of cycleSessions) {
       if (resume && allResults.some((r) => r.label === session.label)) {
         console.log(`  skipping ${session.workload} (already completed)`);
         continue;
       }
 
+      if (isMemoryWorkload(session.workload) && served > 0) {
+        if (isCloud) {
+          console.log(`  deferring ${session.workload}: it needs a fresh engine, which the cloud workflow starts for it in a later invocation`);
+          continue;
+        }
+        console.log(`  restarting ${engine} for ${session.workload}`);
+        await composeDown(anchor);
+        await composeUp(anchor);
+        served = 0;
+      }
+      served += 1;
+
       try {
-        const result =
-          session.workload === "memory-load"
-            ? await runMemoryWorkload(session)
-            : await runThroughputWorkload(session);
+        const result = isMemoryWorkload(session.workload)
+          ? await runMemoryWorkload(session)
+          : await runThroughputWorkload(session);
         allResults.push(result);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

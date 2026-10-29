@@ -216,14 +216,30 @@ jobs:
           ssm_run "$CLIENT_ID" \
             "echo ${GHCR_TOKEN} | docker login ghcr.io -u x --password-stdin && docker pull ghcr.io/warefeats/memtier-benchmark:2.5.1"
 
+          # Start the engine on the engine instance
+          engine_up() {
+            ssm_run "$ENGINE_ID" \
+              "cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${COMPOSE_FILES} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120"
+          }
+
+          engine_down() {
+            ssm_run "$ENGINE_ID" \
+              "cd /opt/bench && docker compose ${COMPOSE_FILES} -p kv-${ENGINE} down -v --remove-orphans" || true
+          }
+
+          # Run the client against the engine; any arguments go to run.ts
+          client_run() {
+            ssm_run "$CLIENT_ID" \
+              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 ENGINE_IMAGE=${ENGINE_IMG} MEMTIER_THREADS=${MEMTIER_THREADS} MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json $*"
+          }
+
           for ENGINE in $ENGINES; do
             echo "=== benchmarking $ENGINE ==="
 
             COMPOSE_FILES="-f compose/docker-compose.${ENGINE}.yml -f compose/cloud-overlay.yml -f compose/cloud-${ENGINE}.yml"
+            ENGINE_IMG=$(grep -m1 '^\s*image:' compose/docker-compose.${ENGINE}.yml | awk '{print $2}')
 
-            # Start engine on engine instance
-            ssm_run "$ENGINE_ID" \
-              "cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${COMPOSE_FILES} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120"
+            engine_up
 
             # Print the engine's startup log once it answers PING, so its banner (thread count, I/O model) is in this log
             echo "--- ${ENGINE} startup log ---"
@@ -231,15 +247,14 @@ jobs:
               "cd /opt/bench && for i in \$(seq 1 60); do redis-cli -p 6379 ping 2>/dev/null | grep -q PONG && break; sleep 1; done; docker compose ${COMPOSE_FILES} -p kv-${ENGINE} logs --no-color engine | head -n 80" \
               || echo "could not read the ${ENGINE} startup log" >&2
 
-            ENGINE_IMG=$(grep -m1 '^\s*image:' compose/docker-compose.${ENGINE}.yml | awk '{print $2}')
+            # The matrix: the ASCII memory cell first, on the fresh engine, then the throughput cells
+            client_run
+            engine_down
 
-            # Run benchmark on client instance
-            ssm_run "$CLIENT_ID" \
-              "cd /opt/bench && ENGINE_HOST=${ENGINE_IP} CLOUD_MODE=1 ENGINE_IMAGE=${ENGINE_IMG} MEMTIER_THREADS=${MEMTIER_THREADS} MEMTIER_IMAGE=ghcr.io/warefeats/memtier-benchmark:2.5.1 bun run src/run.ts --engine=${ENGINE} ${SMOKE_FLAG} --resume --output=/tmp/results.json"
-
-            # Stop engine
-            ssm_run "$ENGINE_ID" \
-              "cd /opt/bench && docker compose ${COMPOSE_FILES} -p kv-${ENGINE} down -v --remove-orphans" || true
+            # The random-bytes memory cell is a baseline-corrected delta too, so it gets a fresh engine of its own
+            engine_up
+            client_run --workload=memory-load-random
+            engine_down
           done
 
       - name: Collect results

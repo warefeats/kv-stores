@@ -1,24 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import {
-  buildMatrix,
-  composeFiles,
-  projectName,
-  containerName,
-  workloadConfig,
-  preloadSizeBytes,
-  ENGINES,
-  WORKLOADS,
-} from "./matrix.js";
+import { buildMatrix, composeFiles, projectName, containerName, workloadConfig, preloadSizeBytes, ENGINES, WORKLOADS, isMemoryWorkload } from "./matrix.js";
 
 describe("buildMatrix", () => {
-  test("full matrix has 16 sessions (4 engines x 4 workloads)", () => {
+  test("full matrix has 20 sessions (4 engines x 5 workloads)", () => {
     const sessions = buildMatrix(false);
-    expect(sessions).toHaveLength(16);
+    expect(sessions).toHaveLength(20);
   });
 
-  test("smoke matrix has 16 sessions (same count, different params)", () => {
+  test("smoke matrix has 20 sessions (same count, different params)", () => {
     const sessions = buildMatrix(true);
-    expect(sessions).toHaveLength(16);
+    expect(sessions).toHaveLength(20);
   });
 
   test("engines run in a fixed order with KiviDB last", () => {
@@ -132,6 +123,18 @@ describe("workloadConfig", () => {
     const config = workloadConfig("memory-load", true);
     expect(config.requests).toBe(100_000);
     expect(config.keyMax).toBe(100_000);
+  });
+
+  test("memory-load-random is memory-load with random bytes, and both need a fresh engine", () => {
+    const ascii = workloadConfig("memory-load", false);
+    const random = workloadConfig("memory-load-random", false);
+    expect(ascii.randomData).toBe(false);
+    expect(random).toEqual({ ...ascii, randomData: true });
+    expect(workloadConfig("pipeline-30", false).randomData).toBe(false);
+    expect(WORKLOADS.at(-1)).toBe("memory-load-random");
+    expect(isMemoryWorkload("memory-load")).toBe(true);
+    expect(isMemoryWorkload("memory-load-random")).toBe(true);
+    expect(isMemoryWorkload("set-get-small")).toBe(false);
   });
 });
 
