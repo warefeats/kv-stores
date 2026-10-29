@@ -29,6 +29,7 @@
     "Memory is baseline-corrected RSS delta after loading 1,000,000 keys with 100-byte values; Dragonfly's per-shard tables scale with thread count, so its fixed cost differs at other thread counts."
   ],
   "runs": [
-    "runs/2026-08-31-aws-graviton3.json"
+    "runs/2026-08-31-aws-graviton3.json",
+    "runs/2026-10-29-aws-graviton3-docker-seccomp.json"
   ]
 }
