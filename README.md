@@ -10,9 +10,9 @@ In-memory key-value store comparison using [memtier_benchmark](https://github.co
 
 | Engine | Version | Image | Threading |
 |--------|---------|-------|-----------|
-| Redis | 8.8.2 | `redis:8.8.2` | Single-threaded (default `io-threads 1`) |
-| Valkey | 9.1.1 | `valkey/valkey:9.1.1` | Single-threaded (default `io-threads 1`) |
-| Dragonfly | 1.40.1 | `docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.1` | Multi-threaded (4 threads local, explicit `--proactor_threads` on cloud) |
+| Redis | 8.10.3 | `redis:8.10.3` | Single-threaded (default `io-threads 1`) |
+| Valkey | 9.1.3 | `valkey/valkey:9.1.3` | Single-threaded (default `io-threads 1`) |
+| Dragonfly | 2.0.2 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2` | Multi-threaded (4 threads local, explicit `--proactor_threads` on cloud) |
 
 ## Fairness configuration
 

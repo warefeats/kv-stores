@@ -1,6 +1,6 @@
 services:
   engine:
-    image: valkey/valkey:9.1.1
+    image: valkey/valkey:9.1.3
     command: >
       valkey-server
       --maxmemory 1gb
