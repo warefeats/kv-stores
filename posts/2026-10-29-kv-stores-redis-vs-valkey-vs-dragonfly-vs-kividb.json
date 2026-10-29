@@ -33,6 +33,7 @@
     "Persistence was off for all four. For KiviDB that's its default: no AOF, and snapshots only on an explicit SAVE or BGSAVE.",
     "The official Redis 8.10.3 image loads its bundled Search, JSON, TimeSeries and Bloom modules, and they were left on as shipped; they add about 12 MB of baseline RSS over Valkey and don't affect GET or SET.",
     "Memory is the baseline-corrected used_memory_rss delta after loading 1,000,000 keys with 100-byte values into a fresh engine: 267 B per key for KiviDB, 118 for Dragonfly, 165 for Redis and 170 for Valkey. Dragonfly's per-shard tables scale with its thread count, so its fixed cost differs at other thread counts.",
+    "memtier's default value is 100 ASCII bytes, and Dragonfly packs an all-ASCII value into 7 bits per byte, so it stores each of these values in 88 bytes where the other three store 100; binary values wouldn't pack, so the next run adds a second memory cell loaded with random bytes. Dragonfly's RSS delta also leaves out its 112 MB idle RSS, which the keys partly fill: by its own used_memory it added 130 bytes per key.",
     "The rig was one c7g.metal engine host and one c7g.16xlarge client in a single cluster placement group in us-east-1, speaking RESP2 without TLS. maxmemory was 16 GiB for all four, and eviction never triggered: working sets stay at or below half of it.",
     "KiviDB checks GitHub for a newer release at startup, before it listens; that was left on, as shipped."
   ]

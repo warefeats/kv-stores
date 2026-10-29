@@ -571,7 +571,7 @@
       "verdict": {
         "winnerId": "dragonfly",
         "headline": "Dragonfly 112.5 MB RSS delta (118 B/key); Redis 157.5 MB (165 B/key); Valkey 162.5 MB (170 B/key); KiviDB 254.9 MB (267 B/key)",
-        "summary": "1,000,000 keys with 100-byte values loaded into a fresh engine; the statistic is the used_memory_rss delta over the empty engine's baseline. Dragonfly used 29% less than Redis and 31% less than Valkey, and KiviDB used 2.3 times Dragonfly's memory and 1.6 times Redis's. The delta leaves out each engine's idle RSS, which was 111.6 MB for Dragonfly against 11.7 to 24.1 MB for the other three."
+        "summary": "1,000,000 keys with 100-byte values loaded into a fresh engine; the statistic is the used_memory_rss delta over the empty engine's baseline. Dragonfly used 29% less than Redis and 31% less than Valkey, and KiviDB used 2.3 times Dragonfly's memory and 1.6 times Redis's. The delta leaves out each engine's idle RSS, which was 111.6 MB for Dragonfly against 11.7 to 24.1 MB for the other three. memtier's default values are 100 ASCII bytes, which Dragonfly packs to 88 bytes each (7 bits per byte); the other three store them as sent."
       },
       "candidates": [
         {
