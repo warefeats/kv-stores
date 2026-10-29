@@ -44,6 +44,13 @@ set -e
 cd /opt/bench && ENGINE_THREADS=${ENGINE_THREADS} docker compose ${CF} -p kv-${ENGINE} up -d engine --wait --wait-timeout 120
 SCRIPT
 
+  # --- Engine startup log ---
+  cat > "$OUT/03b-engine-log-${ENGINE}.sh" <<SCRIPT
+${SSM_PATH}
+set -e
+cd /opt/bench && for i in \$(seq 1 60); do redis-cli -p 6379 ping 2>/dev/null | grep -q PONG && break; sleep 1; done; docker compose ${CF} -p kv-${ENGINE} logs --no-color engine | head -n 80
+SCRIPT
+
   # --- Client run ---
   cat > "$OUT/04-client-run-${ENGINE}.sh" <<SCRIPT
 ${SSM_PATH}
