@@ -16,6 +16,47 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check cloud compose config
+        run: |
+          set -euo pipefail
+          for ENGINE in redis valkey dragonfly kividb; do
+            echo "--- ${ENGINE}"
+            FILES="-f compose/docker-compose.${ENGINE}.yml -f compose/cloud-overlay.yml -f compose/cloud-${ENGINE}.yml"
+            ENGINE_THREADS=64 docker compose ${FILES} config
+            ENGINE_THREADS=64 docker compose ${FILES} config --format json > /tmp/cloud-config.json
+            jq -e '.services.engine
+              | .network_mode == "host"
+                and (.security_opt | index("seccomp=./seccomp-io-uring.json")) != null
+                and (.ulimits.memlock | if type == "number" then . else .single end) == -1' /tmp/cloud-config.json > /dev/null \
+              || { echo "FAIL: ${ENGINE} cloud config lacks host networking, the seccomp profile or unlimited memlock"; exit 1; }
+          done
+
+      - name: Check io_uring under the cloud seccomp profile
+        run: |
+          set -euo pipefail
+          echo "kernel.io_uring_disabled = $(cat /proc/sys/kernel/io_uring_disabled 2>/dev/null || echo n/a)"
+          for ENGINE in dragonfly kividb; do
+            FILES="-f compose/docker-compose.${ENGINE}.yml -f compose/cloud-overlay.yml"
+            docker compose ${FILES} -p kv-uring-${ENGINE} up -d engine
+            LOGS=""
+            for i in $(seq 1 60); do
+              LOGS=$(docker compose ${FILES} -p kv-uring-${ENGINE} logs --no-color engine)
+              grep -q -E "listening on|Ready to accept" <<< "$LOGS" && break
+              sleep 1
+            done
+            docker compose ${FILES} -p kv-uring-${ENGINE} down -v --remove-orphans
+            echo "--- ${ENGINE}"
+            grep -E "I/O model|IORing|io_uring|epoll|io threads|Worker threads" <<< "$LOGS" || true
+            if grep -q -E "Switching to epoll|io_uring unavailable" <<< "$LOGS"; then
+              echo "FAIL: ${ENGINE} fell back from io_uring under the cloud seccomp profile"
+              exit 1
+            fi
+            if [ "$ENGINE" = "kividb" ] && ! grep -q -E "I/O model +: io_uring" <<< "$LOGS"; then
+              echo "FAIL: kividb did not report io_uring as its I/O model"
+              exit 1
+            fi
+          done
+
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:

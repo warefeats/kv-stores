@@ -28,10 +28,13 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 | TLS | off | off | off | off |
 | protocol | RESP2 | RESP2 | RESP2 | RESP2 |
 | bind | `0.0.0.0` | `0.0.0.0` | `0.0.0.0` (default) | `0.0.0.0` with `--protected-mode no` |
+| seccomp | Docker default local / default plus io_uring cloud | Docker default local / default plus io_uring cloud | Docker default local / default plus io_uring cloud | Docker default local / default plus io_uring cloud |
 
 **Why `--proactor_threads 4` locally**: Dragonfly derives its thread count from the cgroup CPU quota. At 4 allocated cores it would correctly use 4 threads, but we set it explicitly for clarity. Cloud runs set `--proactor_threads` to the engine instance's full vCPU count (default 64 for c7g.metal).
 
 **Why KiviDB runs its default thread count**: KiviDB's default, `--threads 0`, resolves to the core count minus two, which is 62 on the c7g.metal's 64 cores. Each engine runs its shipped default thread count on the same box: Dragonfly's explicit 64 equals its own default, and Redis and Valkey ship single-threaded I/O. So the cloud overlay sets no `--threads`, and the cloud workflow prints each engine's startup log, which puts the count KiviDB resolved (`Worker threads : N`) in the run's Actions log. Locally it gets `--threads 4`, the same explicit 4 as Dragonfly.
+
+**Why the cloud rig allows io_uring through seccomp**: Docker 25 and later deny the io_uring system calls in their default seccomp profile. Under it, Dragonfly falls back to epoll and KiviDB to tokio, with only a log line to say so, so neither runs the I/O path it ships for. The cloud overlay runs every engine with Docker's default profile plus `io_uring_setup`, `io_uring_enter` and `io_uring_register` ([`compose/seccomp-io-uring.json`](compose/seccomp-io-uring.json): the profile Docker 29.1.3 ships, from moby/profiles seccomp v0.1.0 under Apache-2.0, with that one rule added), and with `memlock` unlimited as Dragonfly's Docker docs recommend. Redis and Valkey have no io_uring code path, so it changes nothing for them. The 2026-10-29 run under Docker's default profile is published beside the io_uring run, so readers who keep the default can see what it costs each engine. Local runs keep Docker's default profile.
 
 **Why 16 GB cloud maxmemory**: Dragonfly requires at least 256 MiB per proactor thread. At 64 threads that's 16 GiB minimum. All four engines use the same 16 GiB maxmemory on cloud for fairness (per-engine cloud overlays override the command). Local maxmemory stays 1 GiB (sufficient for 4 threads).
 
