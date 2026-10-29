@@ -156,4 +156,10 @@ describe("preload sizing", () => {
     const oneGib = 1024 * 1024 * 1024;
     expect(bytes).toBeLessThan(oneGib);
   });
+
+  test("a memory cell's size counts both of its loads", () => {
+    const config = workloadConfig("memory-load", false);
+    expect(preloadSizeBytes("memory-load", false)).toBe(2 * config.keyMax * (config.dataSize + 72));
+    expect(preloadSizeBytes("set-get-small", false)).toBe(workloadConfig("set-get-small", false).keyMax * (100 + 72));
+  });
 });

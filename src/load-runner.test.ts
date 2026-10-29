@@ -4,6 +4,7 @@ import {
   computeCpuPercent,
   parseServerVersion,
   parseKividbWorkerThreads,
+  memoryMetrics,
 } from "./load-runner.js";
 
 describe("parseProcStat", () => {
@@ -126,5 +127,42 @@ describe("parseKividbWorkerThreads", () => {
 
   test("returns null when the banner is missing", () => {
     expect(parseKividbWorkerThreads("")).toBeNull();
+  });
+});
+
+
+describe("memoryMetrics", () => {
+  const baseline = { usedMemoryMb: 10, usedMemoryRssMb: 100 };
+  const afterFirst = { usedMemoryMb: 110, usedMemoryRssMb: 150, keyCount: 1_000_000 };
+  const afterSecond = { usedMemoryMb: 260, usedMemoryRssMb: 300, keyCount: 2_000_000 };
+
+  test("the first load's statistic is its delta over the empty engine", () => {
+    const m = memoryMetrics(baseline, afterFirst, afterSecond);
+    expect(m.rssDeltaMb.value).toBe(50);
+    expect(m.usedMemoryDeltaMb.value).toBe(100);
+    expect(m.keyCount.value).toBe(1_000_000);
+    expect(m.bytesPerKeyRss.value).toBeCloseTo(52.4, 1);
+    expect(m.bytesPerKeyUsed.value).toBeCloseTo(104.9, 1);
+  });
+
+  test("the second load is measured over the first, not over the baseline", () => {
+    const m = memoryMetrics(baseline, afterFirst, afterSecond);
+    expect(m.rssDeltaSecondMb.value).toBe(150);
+    expect(m.usedMemoryDeltaSecondMb.value).toBe(150);
+    expect(m.keyCountSecond.value).toBe(1_000_000);
+    expect(m.bytesPerKeyRssSecond.value).toBeCloseTo(157.3, 1);
+    expect(m.bytesPerKeyUsedSecond.value).toBeCloseTo(157.3, 1);
+  });
+
+  test("the absolute figures are the first load's, idle overhead included", () => {
+    const m = memoryMetrics(baseline, afterFirst, afterSecond);
+    expect(m.absoluteRssMb.value).toBe(150);
+    expect(m.absoluteUsedMb.value).toBe(110);
+  });
+
+  test("a load that stored nothing reports zero per key rather than dividing by zero", () => {
+    const m = memoryMetrics(baseline, { ...afterFirst, keyCount: 0 }, { ...afterSecond, keyCount: 0 });
+    expect(m.bytesPerKeyRss.value).toBe(0);
+    expect(m.bytesPerKeyRssSecond.value).toBe(0);
   });
 });
