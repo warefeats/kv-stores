@@ -38,6 +38,9 @@ import RESULTS="results.json":
 import-run RESULTS METADATA:
     bun run src/import-run.ts --results={{RESULTS}} --metadata={{METADATA}}
 
+enrich RUN RESULTS:
+    bun run src/enrich.ts --run={{RUN}} --results={{RESULTS}}
+
 rig-deploy:
     cd infra && bun x cdk deploy --require-approval never --outputs-file ../infra-outputs.json
 

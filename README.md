@@ -103,8 +103,9 @@ Results are written to `results.json` (gitignored). Use `--output=<path>` to wri
 
 1. Run the benchmark (local or cloud). The runner writes `results.json`.
 2. Import the run: `bun run src/import.ts --results=results.json` writes a file under `runs/` and appends it to `benchmark.json`.
-3. Commit and merge the run file + updated `benchmark.json`.
-4. In the site repo (`warefeats/warefeats.com`): bump this benchmark's `ref` in `web/data/registry.json` to the merge commit SHA, run `bun run sync`, commit registry + cache, merge, deploy.
+3. Keep the raw results beside it as `raw/<run id>/results.json` and `metadata.json` (plus the cloud rig's `rig.json`), so the run file can be rebuilt. A run file imported before the importer carried per-pass samples gets them with `just enrich runs/<file>.json raw/<run id>/results.json`, which appends each test's `statistic` and each result's `samples` and changes nothing else.
+4. Commit and merge the run file + updated `benchmark.json`.
+5. In the site repo (`warefeats/warefeats.com`): bump this benchmark's `ref` in `web/data/registry.json` to the merge commit SHA, run `bun run sync`, commit registry + cache, merge, deploy.
 
 **Do NOT pin this repo in the site registry until a run file exists.** The site's `sync` throws on `runs.length === 0`, which would break the build for all benchmarks.
 
