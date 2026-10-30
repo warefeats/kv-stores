@@ -199,11 +199,13 @@ const SECTION_DEFS = [
   {
     id: "memory-efficiency",
     title: "Memory efficiency",
-    deck: "Baseline-corrected memory after loading 1M keys with 100-byte values into a fresh engine. RSS delta is the primary metric (allocator-neutral). Candidate statistic: memtier's default values, 100 ASCII bytes; a second load of random bytes shows what packing them is worth.",
+    deck: "Baseline-corrected memory after loading 1M keys with 100-byte values into a fresh engine. RSS delta is the primary metric (allocator-neutral). Candidate statistic: memtier's default values, 100 ASCII bytes; a second load of random bytes shows what packing them is worth. Two more views of the ASCII cell: the next million keys' own RSS, which no startup allocation absorbs, and the absolute RSS after the first million.",
     candidateWorkload: "memory-load",
     testWorkloads: [
       { id: "ascii-values", workload: "memory-load", label: "ASCII values", desc: "1M keys with memtier's default 100-byte values, all ASCII, into a fresh engine" },
       { id: "random-bytes", workload: "memory-load-random", label: "Random bytes", desc: "1M keys with 100-byte values of random bytes, which no engine packs, into a fresh engine" },
+      { id: "ascii-values-second-million", workload: "memory-load", metric: "rssDeltaSecondMb", label: "ASCII values, next million", desc: "The same load again on the next 1M keys: RSS over the first million's, which the segments and pages an engine allocates at startup can no longer absorb" },
+      { id: "ascii-values-absolute", workload: "memory-load", metric: "absoluteRssMb", label: "ASCII values, RSS after 1M keys", desc: "The engine's whole RSS after the first million keys, idle overhead included: what a container limit sees" },
     ],
     unit: "MB",
     lowerIsBetter: true,
@@ -338,8 +340,15 @@ export function buildSections(results: RawResult[]): BenchmarkSection[] {
       const winner = sorted[0]!;
 
       // A test no result covers, such as a memory cell a run didn't load, is left out rather than charted empty.
+      // A test may chart a metric other than the section's (the memory section's second-load and absolute views);
+      // a run from before that metric existed leaves the test out rather than charting the fallback.
       const tests: BenchmarkTest[] = def.testWorkloads
-        .filter((tw) => results.some((r) => r.workload === tw.workload))
+        .map((tw) => ({ ...tw, metric: ("metric" in tw ? tw.metric : undefined) ?? def.metricForChart }))
+        .filter((tw) =>
+          results.some(
+            (r) => r.workload === tw.workload && (tw.metric === def.metricForChart || r.metrics[tw.metric] !== undefined),
+          ),
+        )
         .map((tw) => {
           const wlResults = results.filter((r) => r.workload === tw.workload);
           const rows = engines
@@ -351,7 +360,7 @@ export function buildSections(results: RawResult[]): BenchmarkSection[] {
                 def.metricForChart === "opsPerSec"
                   ? er.flatMap((r) => r.samplesOpsPerSec)
                   : def.metricForChart === "rssDeltaMb"
-                    ? er.map((r) => r.metrics["rssDeltaMb"]?.value ?? r.engineStats.usedMemoryRssMb)
+                    ? er.map((r) => r.metrics[tw.metric]?.value ?? r.engineStats.usedMemoryRssMb)
                     : er.flatMap((r) => r.samplesP99Ms);
               return { candidateId: e, value: round(median(samples), 3), samples };
             });

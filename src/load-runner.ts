@@ -190,6 +190,7 @@ async function preloadKeys(session: Session, config: WorkloadConfig): Promise<vo
 export async function runMemtierPass(
   session: Session,
   config: WorkloadConfig,
+  keyMinimum = 1,
 ): Promise<MemtierResult> {
   const host = isCloud ? engineHost : "engine";
 
@@ -202,8 +203,8 @@ export async function runMemtierPass(
     `--clients=${config.clients}`,
     `--pipeline=${config.pipeline}`,
     `--key-pattern=${config.keyPattern}`,
-    `--key-minimum=1`,
-    `--key-maximum=${config.keyMax}`,
+    `--key-minimum=${keyMinimum}`,
+    `--key-maximum=${keyMinimum - 1 + config.keyMax}`,
     "--distinct-client-seed",
     "--hide-histogram",
   ];
@@ -427,6 +428,61 @@ export async function runThroughputWorkload(
   };
 }
 
+export type MemoryMetrics = {
+  usedMemoryDeltaMb: { value: number; unit: string; label: string };
+  rssDeltaMb: { value: number; unit: string; label: string };
+  baselineUsedMb: { value: number; unit: string; label: string };
+  baselineRssMb: { value: number; unit: string; label: string };
+  keyCount: { value: number; unit: string; label: string };
+  bytesPerKeyRss: { value: number; unit: string; label: string };
+  bytesPerKeyUsed: { value: number; unit: string; label: string };
+  absoluteRssMb: { value: number; unit: string; label: string };
+  absoluteUsedMb: { value: number; unit: string; label: string };
+  rssDeltaSecondMb: { value: number; unit: string; label: string };
+  usedMemoryDeltaSecondMb: { value: number; unit: string; label: string };
+  keyCountSecond: { value: number; unit: string; label: string };
+  bytesPerKeyRssSecond: { value: number; unit: string; label: string };
+  bytesPerKeyUsedSecond: { value: number; unit: string; label: string };
+};
+
+type MemorySample = Pick<EngineStats, "usedMemoryMb" | "usedMemoryRssMb" | "keyCount">;
+
+/**
+ * A memory cell's numbers. The first load's delta over the empty engine is the statistic the section ranks on. The
+ * second load, on keys the first did not touch, is reported on its own: the table segments and arena pages an engine
+ * allocates at startup are used up by then, so its delta is what a key costs once the engine is running (Dragonfly at
+ * 64 threads measured 118 B/key for its first million and 147 for its second, 2026-10-29). The absolute RSS after the
+ * first load is the footprint a container limit sees, idle overhead included.
+ */
+export function memoryMetrics(
+  baseline: Pick<EngineStats, "usedMemoryMb" | "usedMemoryRssMb">,
+  afterFirst: MemorySample,
+  afterSecond: MemorySample,
+): MemoryMetrics {
+  const perKey = (deltaMb: number, keys: number) => (keys > 0 ? (deltaMb * 1024 * 1024) / keys : 0);
+  const usedMemoryDelta = afterFirst.usedMemoryMb - baseline.usedMemoryMb;
+  const rssDelta = afterFirst.usedMemoryRssMb - baseline.usedMemoryRssMb;
+  const keysSecond = afterSecond.keyCount - afterFirst.keyCount;
+  const usedMemoryDeltaSecond = afterSecond.usedMemoryMb - afterFirst.usedMemoryMb;
+  const rssDeltaSecond = afterSecond.usedMemoryRssMb - afterFirst.usedMemoryRssMb;
+  return {
+    usedMemoryDeltaMb: { value: r(usedMemoryDelta, 2), unit: "MB", label: "Used memory (delta)" },
+    rssDeltaMb: { value: r(rssDelta, 2), unit: "MB", label: "RSS (delta)" },
+    baselineUsedMb: { value: r(baseline.usedMemoryMb, 2), unit: "MB", label: "Baseline used memory" },
+    baselineRssMb: { value: r(baseline.usedMemoryRssMb, 2), unit: "MB", label: "Baseline RSS" },
+    keyCount: { value: afterFirst.keyCount, unit: "keys", label: "Key count" },
+    bytesPerKeyRss: { value: r(perKey(rssDelta, afterFirst.keyCount), 1), unit: "B/key", label: "Memory per key (RSS)" },
+    bytesPerKeyUsed: { value: r(perKey(usedMemoryDelta, afterFirst.keyCount), 1), unit: "B/key", label: "Memory per key (used_memory)" },
+    absoluteRssMb: { value: r(afterFirst.usedMemoryRssMb, 2), unit: "MB", label: "RSS after the first load (absolute)" },
+    absoluteUsedMb: { value: r(afterFirst.usedMemoryMb, 2), unit: "MB", label: "Used memory after the first load (absolute)" },
+    rssDeltaSecondMb: { value: r(rssDeltaSecond, 2), unit: "MB", label: "RSS (delta, second load)" },
+    usedMemoryDeltaSecondMb: { value: r(usedMemoryDeltaSecond, 2), unit: "MB", label: "Used memory (delta, second load)" },
+    keyCountSecond: { value: keysSecond, unit: "keys", label: "Key count (second load)" },
+    bytesPerKeyRssSecond: { value: r(perKey(rssDeltaSecond, keysSecond), 1), unit: "B/key", label: "Memory per key (RSS, second load)" },
+    bytesPerKeyUsedSecond: { value: r(perKey(usedMemoryDeltaSecond, keysSecond), 1), unit: "B/key", label: "Memory per key (used_memory, second load)" },
+  };
+}
+
 export async function runMemoryWorkload(
   session: Session,
 ): Promise<CellResult> {
@@ -445,22 +501,14 @@ export async function runMemoryWorkload(
   const clientCpuPct = cpuBefore && cpuAfter ? computeCpuPercent(cpuBefore, cpuAfter) : null;
 
   const postStats = await collectStats(session.engine, proj(session), cFiles);
+  // The same load again, on the next keyMax keys: see memoryMetrics.
+  await runMemtierPass(session, config, config.keyMax + 1);
+  const secondStats = await collectStats(session.engine, proj(session), cFiles);
   const engineConfig = await detectEngineConfig(session);
 
-  const usedMemoryDelta = postStats.usedMemoryMb - baselineStats.usedMemoryMb;
-  const rssDelta = postStats.usedMemoryRssMb - baselineStats.usedMemoryRssMb;
-
-  const bytesPerKeyRss =
-    postStats.keyCount > 0
-      ? (rssDelta * 1024 * 1024) / postStats.keyCount
-      : 0;
-  const bytesPerKeyUsed =
-    postStats.keyCount > 0
-      ? (usedMemoryDelta * 1024 * 1024) / postStats.keyCount
-      : 0;
-
+  const metrics = memoryMetrics(baselineStats, postStats, secondStats);
   console.log(
-    `    → ${postStats.keyCount} keys, delta ${r(usedMemoryDelta, 2)}MB used / ${r(rssDelta, 2)}MB RSS, ${r(bytesPerKeyRss, 1)} B/key (RSS)`,
+    `    → ${postStats.keyCount} keys, delta ${metrics.usedMemoryDeltaMb.value}MB used / ${metrics.rssDeltaMb.value}MB RSS, ${metrics.bytesPerKeyRss.value} B/key (RSS); second load ${metrics.bytesPerKeyRssSecond.value} B/key (RSS); ${metrics.absoluteRssMb.value}MB RSS after the first`,
   );
 
   return {
@@ -477,13 +525,7 @@ export async function runMemoryWorkload(
     engineStats: postStats,
     config: engineConfig,
     metrics: {
-      usedMemoryDeltaMb: { value: r(usedMemoryDelta, 2), unit: "MB", label: "Used memory (delta)" },
-      rssDeltaMb: { value: r(rssDelta, 2), unit: "MB", label: "RSS (delta)" },
-      baselineUsedMb: { value: r(baselineStats.usedMemoryMb, 2), unit: "MB", label: "Baseline used memory" },
-      baselineRssMb: { value: r(baselineStats.usedMemoryRssMb, 2), unit: "MB", label: "Baseline RSS" },
-      keyCount: { value: postStats.keyCount, unit: "keys", label: "Key count" },
-      bytesPerKeyRss: { value: r(bytesPerKeyRss, 1), unit: "B/key", label: "Memory per key (RSS)" },
-      bytesPerKeyUsed: { value: r(bytesPerKeyUsed, 1), unit: "B/key", label: "Memory per key (used_memory)" },
+      ...metrics,
       ...(clientCpuPct !== null ? { clientCpu: { value: clientCpuPct, unit: "%", label: "Client CPU" } } : {}),
     },
   };

@@ -60,14 +60,14 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 
 **Distinct client seed**: Every memtier invocation uses `--distinct-client-seed` so parallel clients access different keys, avoiding artificial hot-key contention.
 
-**Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of INFO `used_memory` and `used_memory_rss` (the engine's process RSS) is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral). The random-bytes cell repeats the load on a fresh engine, since RSS doesn't return to its baseline after FLUSHALL.
+**Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of INFO `used_memory` and `used_memory_rss` (the engine's process RSS) is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral). The load then runs a second time, on the next million keys, and that load's own delta is reported beside the first's: an engine that sizes its tables or touches its arenas at startup has used them up by then, so the second million is what a key costs once the engine is running (Dragonfly at 64 threads measured 118 B/key on its first million and 147 on its second). The absolute RSS after the first million is reported too. The random-bytes cell repeats the load on a fresh engine, since RSS doesn't return to its baseline after FLUSHALL.
 
 ## Workloads
 
 - **W1 — Small value throughput**: SET/GET mix (1:10 ratio), 100-byte values, pipeline depth 1. Measures raw request throughput and tail latency.
 - **W2 — Large value throughput**: SET/GET mix (1:10 ratio), 10 KB values, pipeline depth 1. Working set sized at 40K keys (~480 MB) to stay below 50% of local maxmemory.
 - **W3 — Pipeline effect**: Same as W1 at pipeline depth 30. The section candidate statistic uses pipeline-30 throughput; pipeline-1 numbers come from W1 for comparison.
-- **W4 — Memory efficiency**: Loads 1M keys (100-byte values, memtier's default fill of ASCII `x` bytes) into a fresh engine, measures baseline-corrected used_memory and RSS, reports bytes-per-key with RSS delta as primary. Dragonfly packs an all-ASCII value into 7 bits per byte, so this cell stores its values in 88 bytes where the others store 100.
+- **W4 — Memory efficiency**: Loads 1M keys (100-byte values, memtier's default fill of ASCII `x` bytes) into a fresh engine, measures baseline-corrected used_memory and RSS, reports bytes-per-key with RSS delta as primary, then loads the next 1M keys and reports that load's own bytes-per-key and the absolute RSS after the first million beside it. The section ranks on the first million's RSS delta. Dragonfly packs an all-ASCII value into 7 bits per byte, so this cell stores its values in 88 bytes where the others store 100.
 - **W5 — Memory efficiency, random bytes**: W4 again with memtier's `--random-data`, values no engine packs, on a fresh engine of its own: the runner restarts the engine for it locally, and the cloud workflow starts the engine a second time. Shown beside W4 in the memory section, which ranks on W4.
 
 ## Requirements
@@ -120,7 +120,7 @@ Two arm64 EC2 instances in a cluster placement group:
 
 Engine is started via compose on the engine instance (with per-engine cloud overlays for 16 GiB maxmemory). Client runs memtier directly — no compose on the client in cloud mode. Each engine starts twice: once for the matrix, and once more for the random-bytes memory cell, which needs a fresh engine; the client defers that cell when the engine has already served a workload, and the workflow runs it alone after the restart.
 
-**Cost estimate** (us-east-1 on-demand, checked 2026-10-29): c7g.metal $2.32/hr, plus the client at $0.58/hr as a c7g.4xlarge or $2.32/hr as the c7g.16xlarge the 2026-10-29 runs used, so the rig costs $2.90/hr or $4.64/hr. With the c7g.16xlarge client a smoke took about 7.5 minutes ($0.57) and a four-engine full run about 32 minutes ($2.51), before the second engine start per engine that the random-bytes memory cell adds. Double-check current on-demand pricing before dispatch.
+**Cost estimate** (us-east-1 on-demand, checked 2026-10-29): c7g.metal $2.32/hr, plus the client at $0.58/hr as a c7g.4xlarge or $2.32/hr as the c7g.16xlarge the 2026-10-29 runs used, so the rig costs $2.90/hr or $4.64/hr. With the c7g.16xlarge client a smoke took about 7.5 minutes ($0.57) and a four-engine full run about 32 minutes ($2.51), before the second engine start per engine that the random-bytes memory cell adds, and the second load each memory cell makes. Double-check current on-demand pricing before dispatch.
 
 **Guardrails**: 2-hour auto-shutdown via user data, `if: always()` terminate step, reaper job (runs after every bench, terminates instances older than 3 hours), concurrency group prevents stacking.
 

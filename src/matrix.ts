@@ -150,7 +150,9 @@ export function workloadConfig(
 export function preloadSizeBytes(workload: Workload, smoke: boolean = smokeMode): number {
   const config = workloadConfig(workload, smoke);
   const overhead = 72;
-  return config.keyMax * (config.dataSize + overhead);
+  // A memory cell loads its keys twice over: the second load's own cost is reported beside the first's.
+  const loads = isMemoryWorkload(workload) ? 2 : 1;
+  return loads * config.keyMax * (config.dataSize + overhead);
 }
 
 export function buildMatrix(smoke: boolean = smokeMode): Session[] {
