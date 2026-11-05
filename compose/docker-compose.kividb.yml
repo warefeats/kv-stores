@@ -1,6 +1,6 @@
 services:
   engine:
-    image: kividb/kividb:v1.1.2
+    image: kividb/kividb:v1.2.0
     command: >
       --port 6379
       --bind 0.0.0.0

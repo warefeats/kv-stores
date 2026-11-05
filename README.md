@@ -14,7 +14,7 @@ In-memory key-value store comparison using [memtier_benchmark](https://github.co
 | Redis | 8.10.3 | `redis:8.10.3` | Single-threaded (default `io-threads 1`) |
 | Valkey | 9.1.3 | `valkey/valkey:9.1.3` | Single-threaded (default `io-threads 1`) |
 | Dragonfly | 2.1.0 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0` | Multi-threaded (4 threads local, 64 on cloud via `--proactor_threads 64`) |
-| KiviDB | 1.1.2 | `kividb/kividb:v1.1.2` | Multi-threaded (4 threads local, its default of cores − 2 on cloud: 62 on the c7g.metal) |
+| KiviDB | 1.2.0 | `kividb/kividb:v1.2.0` | Multi-threaded (4 threads local, its default of cores − 2 on cloud: 62 on the c7g.metal) |
 
 ## Fairness configuration
 
