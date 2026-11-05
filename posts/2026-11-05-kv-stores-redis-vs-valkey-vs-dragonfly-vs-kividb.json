@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "slug": "2026-11-05-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb",
+  "publishedAt": "2026-11-05",
+  "run": "2026-11-05-aws-graviton3",
+  "candidates": [
+    "redis",
+    "valkey",
+    "dragonfly",
+    "kividb"
+  ],
+  "title": "Redis vs Valkey vs Dragonfly vs KiviDB",
+  "deck": "A week after the last run, the same 64-core Graviton3 with KiviDB 1.2.0, which reworked how it stores a key, and Dragonfly 2.1. Memory adds random-byte values, the next million keys and each engine's total RSS beside the ranked number.",
+  "verdict": {
+    "winnerId": "dragonfly",
+    "headline": "KiviDB 1.2.0 cut its memory per key by 44% and came within 8 bytes a key of Dragonfly 2.1, which kept the p99 and memory sections, while KiviDB kept pipelining by 31% and out-served Dragonfly on small values in every pass",
+    "summary": "KiviDB 1.2.0 keeps each key and its value in one block behind an 8-byte slot, and its RSS per key fell from 267 bytes to 149, under Redis's 166 and Valkey's 171. Dragonfly 2.1 measured 142 on the ranked number, the RSS a fresh engine adds for its first million keys, which leaves out what it allocates before the first: Dragonfly idled at 280 MB at 64 threads to KiviDB's 18, so after a million keys KiviDB's RSS was 161 MB in all and Dragonfly's 415. By their own used_memory, the two cost the same for random bytes and for the next million, about 147 bytes a key; Dragonfly's lower 130 on memtier's ASCII values comes from packing them 7 bits a byte. KiviDB's throughput stayed within about 3% of 1.1.2's. It served 7% more 100-byte requests than Dragonfly, its slowest pass above Dragonfly's fastest, and 31% more at pipeline depth 30, a floor with the client at 72% CPU, and Dragonfly's p99 led at both value sizes, at 100 bytes by 41 µs, right at the noise threshold. Medians of ten passes; the table shows means."
+  },
+  "sections": {
+    "small-value-throughput": "Dragonfly 1.42M ops/s at the lowest p99 (0.41 ms); KiviDB 1.51M (0.45 ms), the most ops/s on every pass; Valkey 177K (2.10 ms); Redis 176K (2.11 ms)",
+    "large-value-throughput": "Dragonfly 398K ops/s at the lowest p99 (0.83 ms); KiviDB 398K (0.99 ms), both at the network ceiling; Valkey 107K (3.53 ms); Redis 106K (3.56 ms)",
+    "pipeline-effect": "KiviDB 22.4M ops/s at pipeline 30, a floor with the client at 72% CPU; Dragonfly 17.1M; Redis 1.48M; Valkey 1.37M",
+    "memory-efficiency": "Dragonfly 135 MB RSS delta (142 B/key); KiviDB 142 MB (149 B/key); Redis 158 MB (166 B/key); Valkey 163 MB (171 B/key)"
+  },
+  "limitations": [
+    "KiviDB's pipeline-30 cell ran the client at 70 to 73% CPU, where 50 memtier threads can keep at most 50 of its 64 vCPUs busy, and its passes ran faster when the client got more CPU, so its 22.4M ops/s is a floor.",
+    "At 10 KB, Dragonfly and KiviDB both delivered 398K ops/s, 29.6 Gbit/s of values into the client against the instances' 30 Gbit/s rating, so that section's throughput measures the network.",
+    "Latency is closed-loop at 200 connections and measured at the client, so each engine's p99 comes at its own throughput. KiviDB's 100-byte p99 swung from 0.31 to 0.53 ms between passes, and Dragonfly's 41 µs lead in the mean sits right at the noise threshold, so the mark on that chart could go either way on another run.",
+    "The memory section ranks on the RSS a fresh engine adds for its first million keys, which leaves out what it allocates before the first. Dragonfly 2.1 idled at 280 MB at 64 threads, up from 112 MB in 2.0.2, and its first-million delta rose from 118 to 142 bytes per key while its used_memory stayed at 130. The section also charts the next million's delta, random bytes and the total RSS after a million keys.",
+    "memtier's default value is 100 ASCII bytes, which Dragonfly packs 7 bits a byte. By its used_memory, packing saves it 16 bytes a key, the gap between its ASCII and random-byte cells; KiviDB, Redis and Valkey store both the same.",
+    "Against the 2026-10-29 post: the same rig, AMI and client sizing on a different pair of instances. Redis and Valkey, which didn't change, served 0.2 to 2.8% fewer ops/s than then, and KiviDB's throughput stayed within about 3% between 1.1.2 and 1.2.0.",
+    "Docker's default seccomp profile blocks io_uring, so this run allowed io_uring_setup, io_uring_enter and io_uring_register on top of it, as the 2026-10-29 run did. That post's second run shows what the stock profile cost KiviDB 1.1.2; this run didn't repeat it for 1.2.0.",
+    "Dragonfly ran 64 proactor threads, its default on 64 cores, and KiviDB its default 62 worker threads (cores minus two), both on io_uring, read from their startup logs. Redis and Valkey ran their default single-threaded I/O (io-threads 1); turning on their I/O threads is a different benchmark.",
+    "Persistence was off for all four. For KiviDB that's its default: no AOF and no snapshot schedule.",
+    "KiviDB 1.2.0 turns active defrag on by default, and it was left on, as shipped. KiviDB also checks GitHub for a newer release at startup, before it listens; that was left on too.",
+    "The official Redis 8.10.3 image loads its bundled Search, JSON, TimeSeries and Bloom modules, and they were left on as shipped.",
+    "Dragonfly 2.1 is the first release under the Dragonfly Source-Available License, which needs a commercial license past 100 vCPUs of production use across all instances. A benchmark isn't production use, and the engine host has 64.",
+    "The rig was one c7g.metal engine host and one c7g.16xlarge client in a single cluster placement group in us-east-1, speaking RESP2 without TLS. maxmemory was 16 GiB for all four, and eviction never triggered: working sets stay at or below half of it."
+  ]
+}
