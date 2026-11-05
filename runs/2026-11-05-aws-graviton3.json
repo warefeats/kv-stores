@@ -29,8 +29,8 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "Dragonfly 1.42M ops/s at a p99 of 0.41 ms and KiviDB 1.51M at 0.45 ms, a p99 gap inside the noise; Valkey 177K (2.10 ms); Redis 176K (2.11 ms)",
-        "summary": "SET/GET mix (1:10) at pipeline depth 1 with 100-byte values, 200 connections. The section ranks on p99, and Dragonfly's mean was 41 µs lower than KiviDB's, inside the noise: KiviDB's p99 swung from 0.311 to 0.527 ms across passes, Dragonfly's from 0.383 to 0.439. KiviDB's throughput lead is outside it: its slowest pass, 1.49M ops/s, beat Dragonfly's fastest, 1.43M. Valkey and Redis were within 1% of each other at about an eighth of that throughput, and client CPU stayed under 35% on every pass."
+        "headline": "Dragonfly 1.42M ops/s at the lowest p99 (0.41 ms); KiviDB 1.51M (0.45 ms), the most ops/s on every pass; Valkey 177K (2.10 ms); Redis 176K (2.11 ms)",
+        "summary": "SET/GET mix (1:10) at pipeline depth 1 with 100-byte values, 200 connections. The section ranks on p99, and Dragonfly's mean was 41 µs lower than KiviDB's, right at the noise threshold: twice the standard error of that difference is also 41 µs, with KiviDB's p99 swinging from 0.311 to 0.527 ms across passes and Dragonfly's from 0.383 to 0.439. KiviDB's throughput lead is well outside its noise: its slowest pass, 1.49M ops/s, beat Dragonfly's fastest, 1.43M. Valkey and Redis were within 1% of each other at about an eighth of that throughput, and client CPU stayed under 35% on every pass."
       },
       "candidates": [
         {
