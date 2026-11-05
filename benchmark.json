@@ -33,9 +33,11 @@
   "runs": [
     "runs/2026-08-31-aws-graviton3.json",
     "runs/2026-10-29-aws-graviton3.json",
-    "runs/2026-10-29-aws-graviton3-docker-seccomp.json"
+    "runs/2026-10-29-aws-graviton3-docker-seccomp.json",
+    "runs/2026-11-05-aws-graviton3.json"
   ],
   "posts": [
-    "posts/2026-10-29-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb.json"
+    "posts/2026-10-29-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb.json",
+    "posts/2026-11-05-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb.json"
   ]
 }

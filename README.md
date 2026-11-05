@@ -6,6 +6,7 @@ In-memory key-value store comparison using [memtier_benchmark](https://github.co
 
 - 2026-08-31: AWS Graviton3 cloud rig (c7g.metal engine + c7g.4xlarge client, cluster placement group) with Redis, Valkey and Dragonfly. Full run: 2 warmups, 10 measured passes per engine per workload. See [`runs/2026-08-31-aws-graviton3.json`](runs/2026-08-31-aws-graviton3.json) and [the post](https://warefeats.com/posts/2026-08-31-kv-stores-redis-vs-valkey-vs-dragonfly/).
 - 2026-10-29: AWS Graviton3 cloud rig (c7g.metal engine + c7g.16xlarge client, cluster placement group) with KiviDB as a fourth engine. Two full runs, each 2 warmups and 10 measured passes per engine per workload: [`runs/2026-10-29-aws-graviton3.json`](runs/2026-10-29-aws-graviton3.json) allows io_uring through seccomp and is the run [the post](https://warefeats.com/posts/2026-10-29-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb/) draws, and [`runs/2026-10-29-aws-graviton3-docker-seccomp.json`](runs/2026-10-29-aws-graviton3-docker-seccomp.json) keeps Docker's default seccomp profile, which blocks it.
+- 2026-11-05: the same rig with KiviDB 1.2.0 and Dragonfly 2.1.0. The memory section adds random-byte values, the next million keys and the absolute RSS beside the first-million delta. Full run, 2 warmups and 10 measured passes per engine per workload: [`runs/2026-11-05-aws-graviton3.json`](runs/2026-11-05-aws-graviton3.json) and [the post](https://warefeats.com/posts/2026-11-05-kv-stores-redis-vs-valkey-vs-dragonfly-vs-kividb/).
 
 ## Engines
 
@@ -55,12 +56,12 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 | Local full | 4 | 50 | 200 |
 | Cloud smoke (c7g.4xlarge, 16 vCPU) | 14 | 1 | 14 |
 | Cloud full (c7g.4xlarge, 16 vCPU) | 14 | 14 | 196 |
-| Cloud smoke, 2026-10-29 (c7g.16xlarge, 64 vCPU, `MEMTIER_THREADS=50`) | 50 | 1 | 50 |
-| Cloud full, 2026-10-29 (c7g.16xlarge, 64 vCPU, `MEMTIER_THREADS=50`) | 50 | 4 | 200 |
+| Cloud smoke since 2026-10-29 (c7g.16xlarge, 64 vCPU, `MEMTIER_THREADS=50`) | 50 | 1 | 50 |
+| Cloud full since 2026-10-29 (c7g.16xlarge, 64 vCPU, `MEMTIER_THREADS=50`) | 50 | 4 | 200 |
 
 **Distinct client seed**: Every memtier invocation uses `--distinct-client-seed` so parallel clients access different keys, avoiding artificial hot-key contention.
 
-**Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of INFO `used_memory` and `used_memory_rss` (the engine's process RSS) is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral). The load then runs a second time, on the next million keys, and that load's own delta is reported beside the first's: an engine that sizes its tables or touches its arenas at startup has used them up by then, so the second million is what a key costs once the engine is running (Dragonfly at 64 threads measured 118 B/key on its first million and 147 on its second). The absolute RSS after the first million is reported too. The random-bytes cell repeats the load on a fresh engine, since RSS doesn't return to its baseline after FLUSHALL.
+**Memory measurement**: The memory-per-key workload runs FIRST on a fresh engine. An empty-engine baseline of INFO `used_memory` and `used_memory_rss` (the engine's process RSS) is recorded before loading keys. Results report the delta; RSS delta is the primary metric (allocator-neutral). The load then runs a second time, on the next million keys, and that load's own delta is reported beside the first's: an engine that sizes its tables or touches its arenas at startup has used them up by then, so the second million is what a key costs once the engine is running (Dragonfly 2.0.2 at 64 threads measured 118 B/key on its first million and 147 on its second). The absolute RSS after the first million is reported too. The random-bytes cell repeats the load on a fresh engine, since RSS doesn't return to its baseline after FLUSHALL.
 
 ## Workloads
 
@@ -116,11 +117,11 @@ Two arm64 EC2 instances in a cluster placement group:
 | Role | Instance | Purpose |
 |------|----------|---------|
 | Engine | c7g.metal | Runs the KV store container with `network_mode: host`, no resource limits |
-| Client | c7g.4xlarge by default (configurable; the 2026-10-29 runs used c7g.16xlarge) | Runs memtier_benchmark via `docker run --network host` against engine IP |
+| Client | c7g.4xlarge by default (configurable; the runs since 2026-10-29 used c7g.16xlarge) | Runs memtier_benchmark via `docker run --network host` against engine IP |
 
 Engine is started via compose on the engine instance (with per-engine cloud overlays for 16 GiB maxmemory). Client runs memtier directly — no compose on the client in cloud mode. Each engine starts twice: once for the matrix, and once more for the random-bytes memory cell, which needs a fresh engine; the client defers that cell when the engine has already served a workload, and the workflow runs it alone after the restart.
 
-**Cost estimate** (us-east-1 on-demand, checked 2026-10-29): c7g.metal $2.32/hr, plus the client at $0.58/hr as a c7g.4xlarge or $2.32/hr as the c7g.16xlarge the 2026-10-29 runs used, so the rig costs $2.90/hr or $4.64/hr. With the c7g.16xlarge client a smoke took about 7.5 minutes ($0.57) and a four-engine full run about 32 minutes ($2.51), before the second engine start per engine that the random-bytes memory cell adds, and the second load each memory cell makes. Double-check current on-demand pricing before dispatch.
+**Cost estimate** (us-east-1 on-demand, checked 2026-10-29): c7g.metal $2.32/hr, plus the client at $0.58/hr as a c7g.4xlarge or $2.32/hr as the c7g.16xlarge the 2026-10-29 runs used, so the rig costs $2.90/hr or $4.64/hr. With the c7g.16xlarge client and both memory cells (each engine started twice, each memory cell loaded twice), the 2026-11-05 smoke kept the instances up for 10 minutes ($0.77) and the four-engine full run for 45 minutes ($3.49). Double-check current on-demand pricing before dispatch.
 
 **Guardrails**: 2-hour auto-shutdown via user data, `if: always()` terminate step, reaper job (runs after every bench, terminates instances older than 3 hours), concurrency group prevents stacking.
 
