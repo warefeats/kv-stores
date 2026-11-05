@@ -18,7 +18,7 @@
   },
   "sections": {
     "small-value-throughput": "Dragonfly 1.42M ops/s at the lowest p99 (0.41 ms); KiviDB 1.51M (0.45 ms), the most ops/s on every pass; Valkey 177K (2.10 ms); Redis 176K (2.11 ms)",
-    "large-value-throughput": "Dragonfly 398K ops/s at the lowest p99 (0.83 ms); KiviDB 398K (0.99 ms), both at the network ceiling; Valkey 107K (3.53 ms); Redis 106K (3.57 ms)",
+    "large-value-throughput": "Dragonfly 398K ops/s at the lowest p99 (0.83 ms); KiviDB 398K (0.99 ms), both at the network ceiling; Valkey 107K (3.53 ms); Redis 106K (3.56 ms)",
     "pipeline-effect": "KiviDB 22.4M ops/s at pipeline 30, a floor with the client at 72% CPU; Dragonfly 17.1M; Redis 1.48M; Valkey 1.37M",
     "memory-efficiency": "Dragonfly 135 MB RSS delta (142 B/key); KiviDB 142 MB (149 B/key); Redis 158 MB (166 B/key); Valkey 163 MB (171 B/key)"
   },

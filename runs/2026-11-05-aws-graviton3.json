@@ -172,7 +172,7 @@
       "lowerIsBetter": true,
       "verdict": {
         "winnerId": "dragonfly",
-        "headline": "Dragonfly 398K ops/s at the lowest p99 (0.83 ms); KiviDB 398K (0.99 ms), both at the network ceiling; Valkey 107K (3.53 ms); Redis 106K (3.57 ms)",
+        "headline": "Dragonfly 398K ops/s at the lowest p99 (0.83 ms); KiviDB 398K (0.99 ms), both at the network ceiling; Valkey 107K (3.53 ms); Redis 106K (3.56 ms)",
         "summary": "SET/GET mix (1:10) at pipeline depth 1 with 10 KB values, 200 connections. Dragonfly and KiviDB delivered 397,518 and 397,525 ops/s, 29.6 Gbit/s of values into the client against the instances' 30 Gbit/s rating, so throughput can't separate them. Dragonfly's p99 was the steadier, 0.743 to 0.919 ms across passes against KiviDB's 0.751 to 1.311, and its 0.16 ms lead in the mean is outside the noise. Both ran 3.7 times the throughput of Redis and Valkey at about a quarter of their p99, and Redis and Valkey were within 1% of each other."
       },
       "candidates": [
