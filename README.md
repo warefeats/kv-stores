@@ -13,7 +13,7 @@ In-memory key-value store comparison using [memtier_benchmark](https://github.co
 |--------|---------|-------|-----------|
 | Redis | 8.10.3 | `redis:8.10.3` | Single-threaded (default `io-threads 1`) |
 | Valkey | 9.1.3 | `valkey/valkey:9.1.3` | Single-threaded (default `io-threads 1`) |
-| Dragonfly | 2.0.2 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2` | Multi-threaded (4 threads local, 64 on cloud via `--proactor_threads 64`) |
+| Dragonfly | 2.1.0 | `docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0` | Multi-threaded (4 threads local, 64 on cloud via `--proactor_threads 64`) |
 | KiviDB | 1.1.2 | `kividb/kividb:v1.1.2` | Multi-threaded (4 threads local, its default of cores − 2 on cloud: 62 on the c7g.metal) |
 
 ## Fairness configuration
@@ -28,7 +28,7 @@ All engines run with identical maxmemory and no persistence. Protocol is RESP2 (
 | threading | single-threaded (default `io-threads 1`) | single-threaded (default `io-threads 1`) | 4 threads local (`--proactor_threads 4`), 64 on cloud (`--proactor_threads 64`, its default on 64 cores) | 4 threads local (`--threads 4`), 62 on cloud (default `--threads 0`, cores − 2) |
 | TLS | off | off | off | off |
 | protocol | RESP2 | RESP2 | RESP2 | RESP2 |
-| bind | `0.0.0.0` | `0.0.0.0` | `0.0.0.0` (default) | `0.0.0.0` with `--protected-mode no` |
+| bind | `0.0.0.0` | `0.0.0.0` | `::`, one listener for IPv4 and IPv6 (default since 2.1) | `0.0.0.0` with `--protected-mode no` |
 | seccomp | Docker default local / default plus io_uring cloud | Docker default local / default plus io_uring cloud | Docker default local / default plus io_uring cloud | Docker default local / default plus io_uring cloud |
 
 **Why `--proactor_threads 4` locally**: Dragonfly derives its thread count from the cgroup CPU quota. At 4 allocated cores it would correctly use 4 threads, but we set it explicitly for clarity. Cloud runs set `--proactor_threads` to the engine instance's full vCPU count (default 64 for c7g.metal).

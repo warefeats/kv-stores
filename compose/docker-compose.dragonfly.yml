@@ -1,6 +1,6 @@
 services:
   engine:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0
     command: >
       dragonfly
       --logtostderr
