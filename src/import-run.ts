@@ -152,13 +152,13 @@ const ENGINE_META: Record<
   },
   dragonfly: {
     name: "Dragonfly",
-    version: "2.0.2",
+    version: "2.1.0",
     color: "#00C7B7",
     homepage: "https://www.dragonflydb.io",
   },
   kividb: {
     name: "KiviDB",
-    version: "1.1.2",
+    version: "1.2.0",
     color: "#7CB342",
     homepage: "https://kividb.io",
   },
